@@ -1,0 +1,33 @@
+PROGRAM gtp
+
+written by M. J. Sanderson, April 2006
+
+(implementation of duplication score calculations based on algorithm of Zmasek and Eddy, Bioinformatics, 2001)
+
+
+INSTALLATION:
+
+The source distribution is in the form
+
+	gtp.XXX.tar.Z
+
+where XXX is the version number. 
+
+Uncompress and untar the source distribution file.
+
+	uncompress gtp.XXX.tar.Z
+	tar xvf gtp.XXX.tar
+
+Compile under UNIX/Linux/MAC OSX, etc.
+
+	make clean
+	make
+
+Test the program with
+
+	./gtp -f gtpfile -u -d
+
+USAGE
+
+	Type ./gtp with no switches to see a brief command line summary.
+	See the top of the gtp.c file for detailed instructions.
