@@ -1,0 +1,25 @@
+INCLUDE = ./nexus_parser
+INCLUDE2 = ./my_structures
+LIB     = ./nexus_parser
+LIB2	= ./my_structures 
+
+CC = gcc -enable-objc-gc
+#CC = /usr/bin/g++
+
+
+gtp.o: gtp.c np my_s
+	${CC} -c -I ${INCLUDE} -I ${INCLUDE2} -L${LIB} -L${LIB2} gtp.c -o gtp.o -lnp -lmy_structures
+
+# NOTE the order of calling the np and my_structures libs is important! (a lib that depends on another lib must come before it?)
+# spacing between switches and dir names is spooky sensitive, as is whether you need 
+# make sure to call the -lnp library after listing the input file
+
+np: my_s
+	cd nexus_parser; make -f makefilebison; echo "done in nexus_parser"
+my_s:
+	cd my_structures; make; echo "done in my_structures"
+clean:
+	rm -f *.o gtp
+	cd my_structures; make clean;
+	cd nexus_parser; make clean
+
