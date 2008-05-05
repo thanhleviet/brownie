@@ -1,0 +1,10 @@
+#summary Brownie is a program originally for estimating rates of continuous character evolution, now expanded
+
+= Introduction =
+
+Brownie is written in C++ and utilizes various open source packages ...
+
+
+= Details =
+
+See http://www.brianomeara.info for more info
