@@ -92,6 +92,7 @@ typedef std::map <std::string, int, std::less<std::string> > LabelMap;
  */
 template <class T> class Profile
 {
+	friend class BROWNIE; //Added by BCO
 public:
 	/**
 	 * A map between leaf labels in the profile and a unique integer index

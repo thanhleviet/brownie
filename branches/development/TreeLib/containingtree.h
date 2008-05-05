@@ -47,6 +47,9 @@ public:
     
     //Do an NNI move
     virtual void NNI ();
+	
+	//Take a given node and do an NNI
+	void NonRandomNNIAtNode (int chosennodenumber, int resolution);
     
     //Do an SPR move
     virtual void SPR ();

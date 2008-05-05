@@ -301,10 +301,10 @@ void NexusToken::GetDoubleQuotedToken()
 		if( ch == '\"' ) {
 			break;
 		}
-		else if( ch == '_' )	{
+/*		else if( ch == '_' )	{ //BCO removed conversion of underscores to blanks: it just causes a lot of problems
 			ch = ' ';
 			AppendToToken(ch);
-		}
+		} */
 		else
 			AppendToToken(ch);
 
@@ -348,11 +348,11 @@ void NexusToken::GetQuoted()
 			saved = ch;
 			break;
 		}
-		else if( ch == '_' )
+/*		else if( ch == '_' ) //BCO removed conversion of underscores to blanks: it just causes a lot of problems
 		{
 			ch = ' ';
 			AppendToToken(ch);
-		}
+		} */
 		else
 			AppendToToken(ch);
 
@@ -790,12 +790,12 @@ void NexusToken::GetNextToken()
 				break;
 		}
 
-		else if( ch == '_' )
+/*		else if( ch == '_' ) //BCO removed the conversion of underscores to blanks. It just causes a lot of problems
 		{
 			ch = ' ';
 			AppendToToken(ch);
 		}
-
+*/
 		else if( ch == '[' )
 		{
 			// get rest of comment and deal with it, but notice

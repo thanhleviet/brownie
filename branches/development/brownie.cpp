@@ -15,6 +15,7 @@
 #include "discretedatum.h"
 #include "discretematrix.h"
 #include "charactersblock.h"
+#include "charactersblock2.h"
 #include "gport.h"
 #include "profile.h"
 #include "nodeiterator.h"
@@ -57,6 +58,8 @@
 #include <gsl/gsl_complex_math.h>
 #include <gsl/gsl_complex.h>
 #include <gsl/gsl_version.h>
+#include <gsl/gsl_sf_exp.h>
+#include <gsl/gsl_errno.h>
 #include "optimizationfn.h"
 #include "cdfvectorholder.h"
 #include <sstream>
@@ -223,6 +226,7 @@ void BROWNIE::FactoryDefaults()
     logf_open = false;
     echof_open=false;
     quit_now = false;
+	quit_onerr = true;
     message = "";
     next_command[0] = '\0';
     gslseedtoprint=time(NULL);
@@ -233,6 +237,29 @@ void BROWNIE::FactoryDefaults()
     assumptions = NULL;
     characters = NULL;
     chosenchar=1;
+	discretechosenchar=0; //starts at index=0;
+	ratematfixedvector.push_back(0); 
+	ratematassignvector.push_back(0); 
+	freerateletterstring="";
+	negbounceparam=-1;
+	nonnegvariables=true;
+	gsl_vector *userstatefreqvector=gsl_vector_calloc(1);
+	gsl_matrix *optimaldiscretecharQmatrix=gsl_matrix_calloc(1,1);
+	gsl_vector *optimaldiscretecharstatefreq=gsl_vector_calloc(1);
+	gsl_matrix *currentdiscretecharQmatrix=gsl_matrix_calloc(1,1);
+	gsl_vector *currentdiscretecharstatefreq=gsl_vector_calloc(1);	
+	discretechosenmodel=1;
+	bestdiscretelikelihood=GSL_POSINF;
+	optimizationalgorithm=1;
+	discretechosenstatefreqmodel=3;
+	allchar=false;
+	globalstates=false;
+	variablecharonly=false;
+	numbercharstates=0;
+	localnumbercharstates=0;
+	numberoffreeparameters=0;
+	numberoffreerates=0;
+	numberoffreefreqs=0;
     chosentree=1;
     tipvariancetype=0;
     progressbartotal=0;
@@ -240,19 +267,27 @@ void BROWNIE::FactoryDefaults()
     progressbarprinted=0;
     debugmode=false;
     maxiterations=1000;
-    stoppingprecision=1e-4;
+    stoppingprecision=1e-7;
     randomstarts=15;
     treefilename="besttrees.tre";
     badgtpcount=0;
     stepsize=.1;
 	npercent=0.95;
     detailedoutput=false;
+	redobad=false;
+	giveupfactor=100;
     outputallatonce=true;
     chosenmodel=1;
+	gsl_vector *optimalvaluescontinuouschar = gsl_vector_calloc(1);
+	gsl_matrix *optimalVCV = gsl_matrix_calloc(1,1);
+	//optimalvalueslabels.clear();
+	gsl_vector *optimalTraitMeans = gsl_vector_calloc(1);
+	globalchosentaxset="ALL";
     citationarray[0]=false;
     maxnumspecies=100;
     minnumspecies=1;
 	minsamplesperspecies=3;
+	maxstartstops=10;
 	rearrlimit=-1;
     steepest=false;
 	exhaustive=false;
@@ -359,21 +394,21 @@ gsl_rng * BROWNIE::ReturnR()
 
 void BROWNIE::ProgressBar(int total)
 {
-    if (total>0) { //so to start it, give a value of total >0 (# reps); after that, feed it progressbar(0);
+    if (total>0) { //so to start it, give a value of total >0 (# reps); after that, feed it ProgressBar(0);
         progressbartotal=total;
 
-        cout<<"\nProgress:\n0%  10%  20%  30%  40%  50%  60%  70%  80%  90%  100%\n|"<<flush;
+        cout<<"\nProgress:\n0%     10%     20%     30%     40%     50%     60%     70%     80%     90%     100%\n|"<<flush;
         //cout<<"|....|....|....|....|....|....|....|....|....|....|"
     }
     else {
         progressbarcount++;
         double sampleratio=(1.0*progressbarcount)/(1.0*progressbartotal); // convert to floating point division
-        double printratio=progressbarprinted/50.0;
+        double printratio=progressbarprinted/80.0;
         //cout<<sampleratio<<" "<<printratio<<endl;
         while (sampleratio>printratio) {
             cout<<"*"<<flush;
             progressbarprinted++;
-            printratio=(1.0*progressbarprinted)/50.0;
+            printratio=(1.0*progressbarprinted)/80.0;
         }
         if (progressbarcount==progressbartotal) { //stop it, reinitialize
             cout<<"|\n\n"<<flush;
@@ -495,7 +530,7 @@ void BROWNIE::HandleExecuteCmdLine(nxsstring fn)
             NexusError( errormsg, x.pos, x.line, x.col );
             Reset();
         }
-
+		assumptions->MakeTaxsetAll();
 
 
         //  if( !taxa->IsEmpty() ) {
@@ -513,14 +548,38 @@ void BROWNIE::HandleExecuteCmdLine(nxsstring fn)
         //         if( logf_open )
         //            trees->Report(logf);
 
-
-
+		//need to call this here in case not already set by reading  Brownie block
+		if(!characters->IsEmpty() ) {
+			if (characters->GetDataType()==6) {
+				continuouscharacters=characters;
+				//cout<<"Found continuous characters\n";
+			}
+			else {
+				discretecharacters=characters;
+				numbercharstates=discretecharacters->GetMaxObsNumStates();	
+				localnumbercharstates=numbercharstates;
+				//cout<<"Found discrete characters\n";
+			}
+		}
+		
+		if(!characters2->IsEmpty() ) {
+			if (characters2->GetDataType()==6) {
+				continuouscharacters=characters2;
+				//cout<<"Found continuous characters\n";
+			}
+			else {
+				discretecharacters=characters2;
+				numbercharstates=discretecharacters->GetMaxObsNumStates();	
+				localnumbercharstates=numbercharstates;
+				//cout<<"Found discrete characters\n";
+			}
+		}
 
         //     }
 
 
 
-        //    if( !assumptions->IsEmpty() ) {
+	
         //        cerr << "  ASSUMPTIONS block found" << endl;
         //        if( logf_open )
         //             assumptions->Report(logf);
@@ -623,8 +682,34 @@ void BROWNIE::HandleExecute( NexusToken& token )
                 NexusError( errormsg, x.pos, x.line, x.col );
                 Reset();
             }
-
-
+		//need to call this here in case not already set by reading  Brownie block
+			assumptions->MakeTaxsetAll();
+			if(!characters->IsEmpty() ) {
+				if (characters->GetDataType()==6) {
+					continuouscharacters=characters;
+					//cout<<"Found continuous characters\n";
+				}
+				else {
+					discretecharacters=characters;
+					numbercharstates=discretecharacters->GetMaxObsNumStates();	
+					localnumbercharstates=numbercharstates;
+					//cout<<"Found discrete characters\n";
+				}
+			}
+			
+			if(!characters2->IsEmpty() ) {
+				if (characters2->GetDataType()==6) {
+					continuouscharacters=characters2;
+					//cout<<"Found continuous characters\n";
+				}
+				else {
+					discretecharacters=characters2;
+					numbercharstates=discretecharacters->GetMaxObsNumStates();	
+					localnumbercharstates=numbercharstates;
+					//cout<<"Found discrete characters\n";
+				}
+			}
+			
 
             //    if( !taxa->IsEmpty() ) {
             //        cerr << "  TAXA block found" << endl;
@@ -645,7 +730,6 @@ void BROWNIE::HandleExecute( NexusToken& token )
 
 
             //   }
-
 
 
             // if( !assumptions->IsEmpty() ) {
@@ -709,22 +793,39 @@ void BROWNIE::HandleHelp( NexusToken& token )
 	message += "\n  choose         -> chooses tree or char for analysis";
     message += "\n  taxset         -> stores a taxset";
 	message += "\n  citation       -> outputs list of relevant papers for your analyses";
+	message += "\n  tipvalues      -> return list of tip values";
 	message += "\n  quit           -> terminates application";
-	message += "\n\nNumerical optimization settings:";
-	message += "\n  [ALPHA] set    -> sets options";
-    message += "\n  [ALPHA] numopt -> sets parameters for numerical optimization functions";
 	message += "\n\nCharacter evolution:";
-    message += "\n  ratetest       -> does censored rate test";
+    message += "\n  ratetest       -> does censored rate test (original Brownie function)";
     message += "\n  vcv            -> outputs a variance-covariance matrix";
-    message += "\n  [ALPHA] tipvariance    -> allows program to deal with variance in taxon means";
-    message += "\n  [ALPHA] model  -> sets model of character evolution (OU, BM, etc)";
-    message += "\n  [ALPHA] opt    -> gets score for chosen taxset for chosen model";
-    message += "\n  [ALPHA] export -> exports a tree and data in Pagel format";
-	//message += "\n\nSpecies delineation and  tree search:";
-	//message += "\n  [BETA] hs      -> perform a heuristic search";
-	//message += "\n  [BETA]jackknife-> perform a jackknife search";
-	//message += "\n  [BETA] compare -> compare triplet overlap for coalescent trees";
-    message += "\n\nType \"commandname ?\" [without the quotes]\nfor help on any command.";
+	message += "\n  discrete       -> implements discrete character models and reconstructions";
+    message += "\n  [tipvariance]  -> allows program to deal with variance in taxon means";
+    message += "\n  model          -> sets model of continuous character evolution (OU, BM, etc)";
+    message += "\n  continuous     -> gets score for chosen taxset for chosen model";
+    message += "\n  [export]       -> exports a tree and data in deprecated Pagel format";
+	message += "\n  simulate       -> simulate discrete or continuous character matrices";
+	message += "\n  loss           -> estimate rates of binary character loss on branches";
+	message += "\n\nSpecies delimitation and  tree search:";
+	message += "\n  hs             -> perform a heuristic search";
+	message += "\n  [jackknife]    -> perform a jackknife search";
+	message += "\n  [exhaustive]   -> perform an exhaustive search";
+	message += "\n  compare        -> compare triplet overlap for coalescent trees";
+	message += "\n  assign         -> assign samples to species";
+	message += "\n  accuracy       -> compute accuracy of reconstruction";
+	message += "\n\nNumerical optimization settings:";
+	message += "\n  set            -> sets options";
+    message += "\n  numopt         -> sets parameters for numerical optimization functions";	
+	message += "\n\nMiscellaneous:";
+	message += "\n  orderbytree    -> reorders a datamatrix by order of taxa in a tree";
+	message += "\n  printedgelength-> prints branch lengths";
+	message += "\n  partitionededge-> outputs all trees one NNI move away for NNIBS analysis";
+	message += "\n\nIn development:";
+    message += "\n  [nast]";	
+	message += "\n  [timeslice]";
+	message += "\n  [debug]";
+	message += "\n  [Garland]";
+
+    message += "\n\nType \"commandname ?\" [without the quotes]\nfor help on any command.\n\nCommands in brackets (\"[]\") should not be used for published results yet";
     PrintMessage();
 }
 
@@ -778,7 +879,6 @@ void BROWNIE::HandleBlocks( NexusToken& token )
             if( logf_open )
                 trees->Report(logf);
         }
-
         if( !assumptions->IsEmpty() ) {
             cerr << "\n  ASSUMPTIONS block found" << endl;
             assumptions->Report(cerr);
@@ -792,6 +892,14 @@ void BROWNIE::HandleBlocks( NexusToken& token )
             if( logf_open )
                 characters->Report(logf);
         }
+		
+		if( !characters2->IsEmpty() ) {
+            cerr << "\n  CHARACTERS2 block found" << endl;
+            characters2->Report(cerr);
+            if( logf_open )
+                characters2->Report(logf);
+        }
+		
     }
 }
 
@@ -824,7 +932,32 @@ void BROWNIE::HandleDebug( NexusToken& token )
 }
 
 
-
+/**
+* @method HandleNoQuitOnErr [void:protected]
+ * @param token [NexusToken&] the token used to read from in
+ * @throws XNexus
+ *
+ */
+void BROWNIE::HandleNoQuitOnErr( NexusToken& token )
+{
+    for(;;)
+    {
+        token.GetNextToken();
+		
+        if( token.Equals(";") ) {
+            quit_onerr=false;
+            break;
+        }
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading NoQuitOnErr command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+    message="Will not quit on error\n";
+    PrintMessage();
+}
 
 
 
@@ -1000,8 +1133,8 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			else {
 				message+=rearrlimit;
 			}
-            message+="\nAssignFixed  No|Yes                                  Yes";
-            message+="\nSppNumFixed  No|Yes                                  Yes";
+            //message+="\nAssignFixed  No|Yes                                  Yes";
+            //message+="\nSppNumFixed  No|Yes                                  Yes";
             message+="\nMaxNumSpp    <integer-value>                         ";
             message+=maxnumspecies;
             message+="\nMinNumSpp    <integer-value>                         ";
@@ -1032,8 +1165,8 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
             //message+="\nTimeLimit: Limit search to X seconds";
             //message+="\nClock: Count seconds for time limit using actual elapsed time ('Wall'->Clock on a wall) or CPU time"; //NOte to self: see discussion online of time() fn and clock() fn in C++
             message+="\nRearrLimit: Limit search to X rearrangements for each nrep";
-            message+="\nAssignFixed: Assignment of gene samples to species is not optimized during a search";
-            message+="\nSppNumFixed: The total number of species is not optimized during the search (if set to No, then AssignFixed is also set to No)";
+            //message+="\nAssignFixed: Assignment of gene samples to species is not optimized during a search";
+            //message+="\nSppNumFixed: The total number of species is not optimized during the search (if set to No, then AssignFixed is also set to No)";
             message+="\nMaxNumSpp: The maximum number of species to split the samples into (only relevant if SppNumFixed==No)";
 			message+="\nMinSamp: The minimum  number of samples per species";
             message+="\nMoveFreq: Sets the relative proportion of times to try\n\t1) Species tree branch swaps\n\t2) Moving samples from one species to another\n\t3) Increasing the number of species\n\t4) Decreasing the number of species\n\t5) Attempt to reroot the species tree\n  If these don't sum to one, the program will automatically correct this.";
@@ -3860,19 +3993,23 @@ vector<int> BROWNIE::GetTripletOverlap(ContainingTree *t1, ContainingTree *t2,in
         int T2DepthMax=0;
         int T1DepthMaxIndex=0;
         int T2DepthMaxIndex=0;
-        if ((LCADepthVectorT1[0]==LCADepthVectorT1[1] && LCADepthVectorT1[0]==LCADepthVectorT1[2]) || (LCADepthVectorT2[0]==LCADepthVectorT2[1] && LCADepthVectorT2[0]==LCADepthVectorT2[2])) {
+        if ((LCADepthVectorT1[0]==LCADepthVectorT1[1] && LCADepthVectorT1[0]==LCADepthVectorT1[2] && LCADepthVectorT1[1]==LCADepthVectorT1[2]) || (LCADepthVectorT2[0]==LCADepthVectorT2[1] && LCADepthVectorT2[0]==LCADepthVectorT2[2] && LCADepthVectorT2[1]==LCADepthVectorT2[2])) {
             numunresolved++;
-			if ((LCADepthVectorT1[0]==LCADepthVectorT1[1] && LCADepthVectorT1[0]==LCADepthVectorT1[2]) && (LCADepthVectorT2[0]==LCADepthVectorT2[1] && LCADepthVectorT2[0]==LCADepthVectorT2[2])) {
+			if ((LCADepthVectorT1[0]==LCADepthVectorT1[1] && LCADepthVectorT1[0]==LCADepthVectorT1[2] && LCADepthVectorT1[1]==LCADepthVectorT1[2]) && (LCADepthVectorT2[0]==LCADepthVectorT2[1] && LCADepthVectorT2[0]==LCADepthVectorT2[2] && LCADepthVectorT2[1]==LCADepthVectorT2[2])) {
 				numunresolvedinboth++;
 			}
-			else if ((LCADepthVectorT1[0]==LCADepthVectorT1[1] && LCADepthVectorT1[0]==LCADepthVectorT1[2])) {
+			else if ((LCADepthVectorT1[0]==LCADepthVectorT1[1] && LCADepthVectorT1[0]==LCADepthVectorT1[2] && LCADepthVectorT1[1]==LCADepthVectorT1[2])) {
 				numunresolvedinT1only++;
 			}
-			else if ((LCADepthVectorT2[0]==LCADepthVectorT2[1] && LCADepthVectorT2[0]==LCADepthVectorT2[2])) {
+			else if ((LCADepthVectorT2[0]==LCADepthVectorT2[1] && LCADepthVectorT2[0]==LCADepthVectorT2[2] && LCADepthVectorT2[1]==LCADepthVectorT2[2])) {
 				numunresolvedinT2only++;
 			}
         }
         else {
+			if(debugmode) {
+				cout<<"LCADepthVectorT1 = ("<<LCADepthVectorT1[0]<<" "<<LCADepthVectorT1[1]<<" "<<LCADepthVectorT1[2]<<")"<<endl;
+				cout<<"LCADepthVectorT2 = ("<<LCADepthVectorT2[0]<<" "<<LCADepthVectorT2[1]<<" "<<LCADepthVectorT2[2]<<")"<<endl;
+			}			
             for (int j=0;j<3;j++) {
                 if(LCADepthVectorT1[j]>T1DepthMax) {
                     T1DepthMax=LCADepthVectorT1[j];
@@ -3883,6 +4020,10 @@ vector<int> BROWNIE::GetTripletOverlap(ContainingTree *t1, ContainingTree *t2,in
                     T2DepthMaxIndex=j;
                 }
             }
+			if(debugmode) {
+				cout<<"T1DepthMaxIndex = "<<T1DepthMaxIndex<<endl;
+				cout<<"T2DepthMaxIndex = "<<T2DepthMaxIndex<<endl;
+			}						
             if (T2DepthMaxIndex!=T1DepthMaxIndex) {
                 numberdisagree++;
             }
@@ -3897,6 +4038,13 @@ vector<int> BROWNIE::GetTripletOverlap(ContainingTree *t1, ContainingTree *t2,in
 	tripletoverlapoutput.push_back(numunresolvedinboth);
 	tripletoverlapoutput.push_back(numunresolvedinT1only);
 	tripletoverlapoutput.push_back(numunresolvedinT2only);
+	if(debugmode) {
+		cout<<"tripletoverlapoutput = (";
+		for(int vectorposition=0;vectorposition<6;vectorposition++) {
+			cout<<" "<<tripletoverlapoutput[vectorposition];
+		}
+		cout<<" )"<<endl;
+	}						
     return tripletoverlapoutput;
 }
 
@@ -3946,7 +4094,7 @@ void BROWNIE::ComputeAccuracy() {
 		//	message+="TRUTH";
 		//}
 		//else {
-			message+=trees->GetTreeName(selectedtree-1);
+			message+=trees->GetTreeName(selectedtree);
 		//}
 		message+="\t";
 		
@@ -3957,18 +4105,117 @@ void BROWNIE::ComputeAccuracy() {
 		double numunresolvedinTTrueonly=tripletoverlapoutput[4];
 		double numunresolvedinTOtheronly=tripletoverlapoutput[5];
 		//message+=double((tripletoverlapoutput[0]-tripletoverlapoutput[1]-tripletoverlapoutput[4]-tripletoverlapoutput[5])/tripletoverlapoutput[0]);
-		message+=(maxnumber-numunresolved)/maxnumber;
+		message+=(maxnumber-numunresolved-numberdisagree)/maxnumber;
 		message+="\t";
 		//message+=double(tripletoverlapoutput[3]/tripletoverlapoutput[0]);
 		message+=numunresolvedinboth/maxnumber;
 		message+="\t";
 		//message+=double(tripletoverlapoutput[4]/tripletoverlapoutput[0]);
-		message+=numunresolvedinTTrueonly/maxnumber;
+		message+=(numunresolvedinTTrueonly+numberdisagree)/maxnumber;
 		message+="\t";
 		//message+=double(tripletoverlapoutput[5]/tripletoverlapoutput[0]);
 		message+=numunresolvedinTOtheronly/maxnumber;
 		PrintMessage();
 	}
+}
+
+//Creates batch file for partitioned edge support for a given tree;
+void BROWNIE::HandlePartitionedEdgeSupport ( NexusToken& token) {
+	int numberofpartitions=1;
+	bool donehelp=false;
+	for(;;)
+    {
+        token.GetNextToken();
+        if( token.Equals(";") && !donehelp) {
+			BatchPartitionedEdgeSupport(numberofpartitions);
+            break;
+        }
+        else if( token.Abbreviation("?") ) {
+            message="Usage: PartitionedEdgeSupport partitions=<int>\n\n";
+            message+="This creates a file (partitionededgesupport.tre) containing the chosen tree and then all trees one NNI move away from this tree, grouped by edges.\n";
+            PrintMessage();
+			donehelp=true;
+        }
+		else if( token.Abbreviation("Partitions") ) {
+            nxsstring numbernexus = GetNumber(token);
+            numberofpartitions=atoi( numbernexus.c_str() ); //convert to int
+            message="You have chosen to use ";
+            message+=numberofpartitions;
+            PrintMessage();
+            if (numberofpartitions<1) {
+                errormsg = "Error: must select a number greater than zero";
+                numberofpartitions=1;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+        }
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading PARTITIONEDEDGESUPPORT command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+	
+}
+
+void BROWNIE::BatchPartitionedEdgeSupport (int numberofpartitions) {
+	int totaledges=0;
+	ContainingTree OriginalTree;
+	Tree OriginalTreeTreeFmt=intrees.GetIthTree(chosentree-1);
+	OriginalTree.SetRoot(OriginalTreeTreeFmt.CopyOfSubtree(OriginalTreeTreeFmt.GetRoot()));
+	ofstream partedgef;
+	nxsstring partedgefile="partitionededgesupport.tre";
+	partedgef.open(partedgefile.c_str());
+	partedgef<<"#nexus\nbegin trees;\n"; 
+	OriginalTree.Update();
+	OriginalTree.GetNodeDepths();
+	int NodesTouched=0;
+	NodeIterator <Node> npe (OriginalTree.GetRoot());
+	//OriginalTree.ReportTreeHealth();
+    NodePtr currentnodepe = npe.begin();
+	//cout<<"starting currentnode is "<<currentnodepe<<endl;
+    while (currentnodepe)
+    {
+		NodesTouched++;
+        if (currentnodepe->IsLeaf() || currentnodepe==OriginalTree.GetRoot() ) { // we don't want to do NNI on edges that don't matter
+        }
+		else {
+			nxsstring newlabel="edge";
+			newlabel+=NodesTouched;
+			currentnodepe->SetLabel(newlabel);
+			ContainingTree NewTree=OriginalTree;
+			NewTree.NonRandomNNIAtNode(NodesTouched,1);
+			partedgef<<"tree edge"<<NodesTouched<<"_res1 = [&R] ";
+			NewTree.Write(partedgef);
+			partedgef<<endl;
+			ContainingTree NewTree2=OriginalTree;
+			NewTree2.NonRandomNNIAtNode(NodesTouched,2);
+			partedgef<<"tree edge"<<NodesTouched<<"_res2 = [&R] ";
+			NewTree2.Write(partedgef);
+			partedgef<<endl;
+			//OriginalTree.ReportTreeHealth();
+			totaledges++;
+		}
+//cout<<"currentnode before next is "<<currentnodepe<<endl;
+        currentnodepe=npe.next();
+		//cout<<"currentnode after next is "<<currentnodepe<<endl;
+
+    }
+	partedgef<<"[tree original = [&R] ";
+	OriginalTree.Write(partedgef);
+	partedgef<<"]"<<endl;
+	partedgef<<"tree originalwithlabels = [&R] ";
+	OriginalTree.SetInternalLabels(true);
+	OriginalTree.Write(partedgef);
+	partedgef<<endl;
+	partedgef<<"end;";
+	partedgef.close();
+	message="There were two alternate resolutions for each of ";
+	message+=totaledges;
+	message+=" internal edges, plus the original tree, for ";
+	message+=1+(2*totaledges);
+	message+=" trees total in partitionededgesupport.tre.";
+	PrintMessage();
 }
 
 
@@ -4248,20 +4495,20 @@ void BROWNIE::PrintCitations()
 {
 	message="Papers whose methods you have used so far in this session:\n[you should read and probably cite them]";
 	if (citationarray[0]) {
-		message+="\n\nO'Meara, B.C., C. Ane, M.J. Sanderson, and P.C. Wainwright. 2006. \"Testing for different rates of evolution using likelihood.\" Evolution 60(5): 922-933\n---Citation for this program and for rate comparison methods.";
+		message+="\n\nCitation for this program and for rate comparison methods:\n   O'Meara, B.C., C. Ane, M.J. Sanderson, and P.C. Wainwright. 2006. \"Testing for different rates of evolution using likelihood.\" Evolution 60(5): 922-933";
 	}
 	if (citationarray[1]) {
-		message+="\n\nBlomberg, S.P., T. Garland, Jr., and A.R. Ives. 2003. \"Testing for phylogenetic signal in comparative data: Behavioral traits are more labile.\" Evolution 57(4) 717-745.\n---Citation for constant mean, constant pull OU and ACDC transformations (d and g parameters, respectively).";
+		message+="\n\nCitation for constant mean, constant pull OU and ACDC transformations (d and g parameters, respectively):\n   Blomberg, S.P., T. Garland, Jr., and A.R. Ives. 2003. \"Testing for phylogenetic signal in comparative data: Behavioral traits are more labile.\" Evolution 57(4) 717-745.";
 	}
 				if (citationarray[2]) {
-					message+="\n\nButler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695.";
-					message+="\n\nHansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351.";
-					message+="\n\nO'Meara, B.C. Brownie v2.0b7. Distributed by the author at http://www.brianomeara.info/brownie";
-					message+="\n---Citations for Ornstein-Uhlenbeck model with multiple means but one attraction and rate parameter";
+					message+="\n\nCitations for Ornstein-Uhlenbeck model with multiple means but one attraction and rate parameter:";
+					message+="\n\n   Butler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695.";
+					message+="\n\n   Hansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351.";
+					message+="\n\n   O'Meara, B.C. Brownie v2.0b8. Distributed by the author at http://www.brianomeara.info/brownie";
 				}
 	if (citationarray[3]) {
-			message+="\n\nO'Meara, B.C. MS in prep \"Species delimitation using multiple gene trees\"";
-			message+="\n---Citation for species delimitation approach";
+		message+="\n\nCitation for species delimitation approach:";
+		message+="\n\n   O'Meara, B.C. MS in prep \"Species delimitation using multiple gene trees\"";
 	}
 	PrintMessage();
 }
@@ -4323,21 +4570,47 @@ void BROWNIE::HandleChoose( NexusToken& token )
                 chosenchar=1;
                 throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
             }
-            if (chosenchar>characters->GetNChar()) {
+            if (chosenchar>continuouscharacters->GetNChar()) {
                 errormsg = "Error: you chose char number ";
                 errormsg += chosenchar;
                 errormsg += " but there are only ";
-                errormsg += characters->GetNChar();
+                errormsg += continuouscharacters->GetNChar();
                 errormsg += " characters loaded.\n";
                 errormsg += "Character 1 has been selected by default.";
                 chosenchar=1;
                 throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
             }
         }
+		else if( token.Abbreviation("Discretechar") ) {
+            donenothing=false;
+            numbernexus = GetNumber(token);
+            discretechosenchar=-1+atoi( numbernexus.c_str() ); //convert to int
+            message="You have chosen discrete character number ";
+            message+=discretechosenchar+1;
+            PrintMessage();
+            if (discretechosenchar<0) {
+                errormsg = "Error: must select a number greater than zero";
+                discretechosenchar=0;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+            if (discretechosenchar>-1+discretecharacters->GetNChar()) {
+                errormsg = "Error: you chose char number ";
+                errormsg += discretechosenchar;
+                errormsg += " but there are only ";
+                errormsg += discretecharacters->GetNChar();
+                errormsg += " discrete characters loaded.\n";
+                errormsg += "Character 1 has been selected by default.";
+                discretechosenchar=0;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+        }
+		
         else if( token.Abbreviation("?") ) {
             donenothing=false;
-            message="Usage: Choose [tree=<integer>] [char=<integer>]\n\n";
-            message+="Selects one tree and/or character to use for subsequent analyses.\n";
+            message="Usage: Choose [tree=<integer>] [char=<integer>] [discrete=<integer>]\n\n";
+            message+="Selects one tree and/or character to use for subsequent analyses. Continuous characters\n";
+			message+="are chosen by default ('char=' or 'c='), discrete characters must be chosen using\n";
+			message+="'discretechar=' or 'd='.\n\n";
             message+="The remaining trees and characters are still stored in memory and can be chosen later.\n\n";
             message+="Available options:\n\n";
             message+="Keyword ---- Option type ------------------------ Current setting --\n";
@@ -4349,12 +4622,20 @@ void BROWNIE::HandleChoose( NexusToken& token )
                 message+="[no trees loaded]";
             }
             message+="\nChar         <integer-value>                      ";
-            if (characters->GetNChar()>0) {
+            if (continuouscharacters->GetNChar()>0) {
                 message+=chosenchar;
             }
             else {
-                message+="[no characters loaded]";
+                message+="[no continuous characters loaded]";
             }
+			message+="\nDiscrete     <integer-value>                      ";
+            if (discretecharacters->GetNChar()>0) {
+                message+=discretechosenchar+1;
+            }
+            else {
+                message+="[no discrete characters loaded]";
+            }
+			
             message+="\n\n";
             PrintMessage();
         }
@@ -4382,15 +4663,15 @@ void BROWNIE::HandleCompareRandomTrees( NexusToken& token)
         token.GetNextToken();
         if( token.Equals(";") ) {
             if (donenothing) {
-                message="Usage: Compare [ltax=<integer> rtax=<integer> nreps=<integer> [loop]]\n\nIf you use loop, ltax=taxmax and rtax=taxmin";
+                message="Usage: Compare [ltax=<integer> rtax=<integer> nreps=<integer> [loop] [auto]]\n\nIf you use loop, ltax=taxmax and rtax=taxmin";
                 PrintMessage();
             }
             else {
                 if (loopmode && !automode) {
                     message="loopmode=yes automode=no\nltax\trtax\tnreps\tdiffs\tobs\tprobability\tcum prob";
                     PrintMessage();
-                    int taxmax=ltax;
-					int taxmin=rtax;
+                    int taxmax=GSL_MAX(rtax,ltax);
+					int taxmin=GSL_MIN(rtax,ltax);
 					nxsstring filename="comparisoncodeMax";
 					filename+=taxmax;
 					filename+="Min";
@@ -4398,9 +4679,15 @@ void BROWNIE::HandleCompareRandomTrees( NexusToken& token)
 					filename+=".cpp";
 					ofstream comparisonfile;
 					comparisonfile.open( filename.c_str() );
+					if (debugmode) {
+						cout<<"taxmax="<<taxmax<<endl<<"taxmin="<<taxmin<<endl;
+					}	
                     for (int ntax=taxmin;ntax<=taxmax;ntax++) {
                         ltax=ntax;
                         rtax=ntax;
+						if (debugmode) {
+							cout<<"ntax="<<ntax<<endl;
+						}	
                         int minnumleaves=GSL_MIN(ltax,rtax);
                         int maxnumsametriplets=(minnumleaves*(minnumleaves-1)*(minnumleaves-2))/6; //minnumleaves choose 3
 						vector<int> differencevector(maxnumsametriplets+1,0); // the +1 is so we can have zero in the vector, too
@@ -4419,6 +4706,8 @@ void BROWNIE::HandleCompareRandomTrees( NexusToken& token)
 							vector<int> tripletoverlapoutput=GetTripletOverlap(&t1,&t2,taxaincommon);
 							int numberdisagree=tripletoverlapoutput[1];
 							if (debugmode) {
+								t1.Draw(cout);
+								t2.Draw(cout);
 								cout<<"rep "<<i+1<<" "<<numberdisagree<<endl;
 							}
 							differencevector[numberdisagree]++;
@@ -4479,10 +4768,12 @@ void BROWNIE::HandleCompareRandomTrees( NexusToken& token)
 						t1.ConvertTaxonNamesToRandomTaxonNumbers();
 						t2.ConvertTaxonNamesToRandomTaxonNumbers();
 						int taxaincommon=PrepareTreesForTriplet(&t1,&t2);
-						QTValues Q;
-						CompareTriplets(t1,t2, Q);
-						SummaryStats(Q);
-						int numberdisagree=Q.d;
+							// QTValues Q;
+							// CompareTriplets(t1,t2, Q);
+							// SummaryStats(Q);
+							// int numberdisagree=Q.d;
+						vector<int> tripletoverlapoutput=GetTripletOverlap(&t1,&t2,taxaincommon);
+						int numberdisagree=tripletoverlapoutput[1];
 						comparisonfile<<1.0*numberdisagree/maxnumsametriplets<<endl;
 						differencevector[numberdisagree]++;
 						vectorminimum=requiredminimum*10;
@@ -4651,10 +4942,12 @@ void BROWNIE::HandleCompareRandomTrees( NexusToken& token)
 						t1.ConvertTaxonNamesToRandomTaxonNumbers();
 						t2.ConvertTaxonNamesToRandomTaxonNumbers();
 						int taxaincommon=PrepareTreesForTriplet(&t1,&t2);
-						QTValues Q;
-						CompareTriplets(t1,t2, Q);
-						SummaryStats(Q);
-						int numberdisagree=Q.d;
+							// QTValues Q;
+							// CompareTriplets(t1,t2, Q);
+							// SummaryStats(Q);
+							// int numberdisagree=Q.d;
+						vector<int> tripletoverlapoutput=GetTripletOverlap(&t1,&t2,taxaincommon);
+						int numberdisagree=tripletoverlapoutput[1];
 						differencevector[numberdisagree]++;
 					}
 					message="ltax\trtax\tnreps\tdiffs\tobs\tprobability\tcum prob";
@@ -4744,29 +5037,9 @@ void BROWNIE::HandleCompareRandomTrees( NexusToken& token)
                 throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
             }
         }
-		else if( token.Abbreviation("Jreps") ) {
+		else if( token.Abbreviation("?") ) {
             donenothing=false;
-            numbernexus = GetNumber(token);
-            jreps=atoi( numbernexus.c_str() ); //convert to int
-            if (jreps<1) {
-                errormsg = "Error: must select a number greater than 0";
-                jreps=0;
-                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
-            }
-        }
-		else if( token.Abbreviation("PCtdelete") ) {
-            donenothing=false;
-            numbernexus = GetNumber(token);
-            pctdelete=atof( numbernexus.c_str() ); //convert to int
-            if (pctdelete>=1 || pctdelete<=0) {
-                errormsg = "Error: must select a number between 0 and 1 (and not equal to either of these)";
-                pctdelete=1.0/3.0;
-                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
-            }
-        }
-        else if( token.Abbreviation("?") ) {
-            donenothing=false;
-            message="Usage: Compare [ltax=<integer> rtax=<integer> nreps=<integer>]\n\n";
+            message="Usage: Compare [ltax=<integer> rtax=<integer> nreps=<integer> <loop> <auto>]\n\n";
             PrintMessage();
         }
         else {
@@ -4860,8 +5133,15 @@ void BROWNIE::HandleSet( NexusToken& token )
             QTValues Q;
             CompareTriplets(t1,t2, Q);
             SummaryStats(Q);
-            int numberdisagree=Q.d;
-            int maxnumber=Q.n;
+			int taxaincommon2=PrepareTreesForTriplet(&t1,&t2);
+							// QTValues Q;
+							// CompareTriplets(t1,t2, Q);
+							// SummaryStats(Q);
+							// int numberdisagree=Q.d;
+			vector<int> tripletoverlapoutput=GetTripletOverlap(&t1,&t2,taxaincommon2);
+			int numberdisagree=tripletoverlapoutput[1];
+// int numberdisagree=Q.d;
+            int maxnumber=tripletoverlapoutput[0];
             cout<<"Out of "<<maxnumber<<" only "<<numberdisagree<<" disagreed\n";
         }
         else if( token.Abbreviation("Randtree")) {
@@ -4960,6 +5240,9 @@ void BROWNIE::HandleModel( NexusToken& token )
             else if(chosenmodel==6) {
                 message+="BMC";
             }
+            else if(chosenmodel==12) {
+                message+="OUSM";
+            }            
 			else if(chosenmodel==20) {
 				message+="Pagel's Kappa";
 			}
@@ -4973,12 +5256,23 @@ void BROWNIE::HandleModel( NexusToken& token )
                 message+=chosenmodel;
             }
 			message+="\n             OUSM | OUCM";
-            message+="\n States      vector                                    (";
+            message+="\n States      vector                                                        (";
             for (int i=0; i<staterestrictionvector.size();i++) {
                 message+=" ";
                 message+=staterestrictionvector[i];
             }
             message+=" )";
+			message+="\n Changes     int                                                           ";
+			message+=maxstartstops;
+			/*if((optimalvalueslabels.size())>1) {
+				message+="\n ManualOptima";
+				cout<<"optimalvaluescontinuouschar size="<<optimalvaluescontinuouschar->size<<endl;
+				cout<<"optimaldiscretecharstatefreq size="<<optimaldiscretecharstatefreq->size<<endl;
+				for (int i=0; i<optimalvaluescontinuouschar->size;i++) {
+					cout<<" "<<gsl_vector_get(optimalvaluescontinuouschar,i);
+				}
+				cout<<endl;
+			}*/
            // message+="\n\nType\nBM1    = Brownian motion, one rate parameter";
 			//ROse suggests OUCMA approach would be better
 			
@@ -5011,7 +5305,52 @@ void BROWNIE::HandleModel( NexusToken& token )
 		//	message+="\nTSMBC  = Brownian motion, with different rate parameters for branches that cross and do not cross time interval boundaries";
 			
 			message+="\n\nState vector allows restrictions, so that character states 0 and 2, for example, may be\n     viewed by the program as identical. To do this, you'd enter:\n\n       states=(0 1 0 2 3 4 5 6 7 8)";
+			/*if(optimalvalueslabels.size()>1) {
+				message+="\n\nManualOptima allows you to change the values recorded from the last optimization\n  and use this in character simulations.";
+				message+="\n  Current parameter labels:";
+				for (int i=0;i<optimalvalueslabels.size();i++) {
+					message+=" ";
+					message+=optimalvalueslabels[i];
+				}
+			}*/
+			message+="\n\nChanges is the maximum number of times a particular character state can be present on a root to tip lineage.\n  For example, if a taxon sister to all other taxa starts in state 0, changes to state 1,\n  and then changes to state 0, state 0 has beeen present on that branch twice."; 
             PrintMessage();
+        }
+		else if( token.Abbreviation("Changes") ) {
+            nxsstring numbernexus = GetNumber(token);
+            int newmaxchanges=atoi( numbernexus.c_str() ); //convert to int
+            if (newmaxchanges<1) {
+                errormsg = "Error: must select a number greater than zero";
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+			else {
+				maxstartstops=2*newmaxchanges;
+			}
+        }
+		
+		else if (token.Abbreviation("Manualoptima")) {
+            int numparams=(optimalvaluescontinuouschar->size)-1;
+            for (int currentparam=0; currentparam<numparams; currentparam++) {
+                double newvalue;
+                if ((cout<<"Parameter "<<currentparam+1<<" (Old value: "<<gsl_vector_get(optimalvaluescontinuouschar,currentparam)<<") New value: ") && (!(cin >> newvalue))) {
+                    cout << "Using old value:";
+                    cin.clear();
+					newvalue=gsl_vector_get(optimalvaluescontinuouschar,currentparam);
+                    //cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                }
+                gsl_vector_set(optimalvaluescontinuouschar,currentparam,newvalue);
+            }
+			GetOptimalVCVAndTraitsContinuous();
+			int ntax=optimalVCV->size1;
+			gsl_vector *tipsresid=gsl_vector_calloc(ntax);
+			tipsresid=GetTipValues(globalchosentaxset,chosenchar);
+			for (int taxon=0;taxon<ntax;taxon++) {
+				gsl_vector_set(tipsresid,taxon,gsl_vector_get(tipsresid,taxon)-gsl_vector_get(optimalTraitMeans,taxon));
+			}
+			gsl_vector_set(optimalvaluescontinuouschar,numparams,GetLScore(optimalVCV,tipsresid,1));
+			message="New lscore with current model settings: ";
+			message+=gsl_vector_get(optimalvaluescontinuouschar,numparams);
+			PrintMessage();
         }
         else if( token.Abbreviation("Type") ) {
 			citationarray[0]=true;
@@ -5276,20 +5615,20 @@ void BROWNIE::HandleLoss ( NexusToken& token )
 		//		message+=gsl_vector_get(optimalrateB,i);
 		//		PrintMessage();
 		//	}
-				double modelAaicc=(2.0*gsl_vector_get(optimalrateA,2))+2+4.0/((characters->GetNChar())-2); //AICc, n=1;
-				double modelBaicc=(2.0*gsl_vector_get(optimalrateB,4))+4+12.0/((characters->GetNChar())-3);
+				double modelAaicc=(2.0*gsl_vector_get(optimalrateA,2))+2+4.0/((discretecharacters->GetNChar())-2); //AICc, n=1;
+				double modelBaicc=(2.0*gsl_vector_get(optimalrateB,4))+4+12.0/((discretecharacters->GetNChar())-3);
 				double modelAaic=(2.0*gsl_vector_get(optimalrateA,2))+2*1;
 				double modelBaic=(2.0*gsl_vector_get(optimalrateB,4))+2*2;				
 				message="ModelA\n\trate = ";
 				message+=gsl_vector_get(optimalrateA,0);
 				message+=" +/- ";
 				message+=gsl_vector_get(optimalrateA,1);
-				message+="\n\tlnL = ";
+				message+="\n\t-lnL = ";
 				message+=gsl_vector_get(optimalrateA,2);
 				message+="\n\tAIC = ";
 				message+=modelAaic-GSL_MIN(modelAaic,modelBaic);
 				message+="\n\tAICc = ";
-				message+=modelAaicc-GSL_MIN(modelAaicc,modelBaicc);;				
+				message+=modelAaicc-GSL_MIN(modelAaicc,modelBaicc);				
 				message+="\nModelB\n\trate0 = ";
 				message+=gsl_vector_get(optimalrateB,0);
 				message+=" +/- ";
@@ -5298,7 +5637,7 @@ void BROWNIE::HandleLoss ( NexusToken& token )
 				message+=gsl_vector_get(optimalrateB,1);
 				message+=" +/- ";
 				message+=gsl_vector_get(optimalrateB,3);
-				message+="\n\tlnL = ";
+				message+="\n\t-lnL = ";
 				message+=gsl_vector_get(optimalrateB,4);
 				message+="\n\tAIC = ";
 				message+=modelBaic-GSL_MIN(modelAaic,modelBaic);
@@ -5332,12 +5671,418 @@ void BROWNIE::HandleDiscrete( NexusToken& token )
 	// Retrieve all tokens for this command, stopping only in the event
 	// of a semicolon or an unrecognized keyword
 	//
+	bool donesomething=false;
+	bool treeloop=false;
+	bool charloop=false;
+	int breaknum=0;
+	bool reconstruct=false;
+	nxsstring tmessage;
+    ofstream tablef;
+    nxsstring tablefname;
+    bool tablef_open=false;
+    bool name_provided=false;	
+	bool appending=true;
+	bool replacing=false;
     for(;;)
     {
         token.GetNextToken();
 		
         if( token.Equals(";") ) {
-			double rateA=0.0000000000000000001;
+			if (donesomething==false) {
+				if(allchar) { //If we are doing inferences from all char at once, use max number of states as nstates for each char
+					globalstates=true;
+				}
+				if( appending && replacing ) {
+					errormsg = "Cannot specify APPEND and REPLACE at the same time";
+					throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+				}		
+				bool exists = FileExists( tablefname.c_str() );
+				bool userok = true;
+				if (appending && name_provided) {
+					tablef_open = true;
+					tablef.open( tablefname.c_str(), ios::out | ios::app );
+					message = "\nAppending to discrete model output file (creating it if need be) ";
+					message += tablefname;
+					PrintMessage();
+				}
+				else if (name_provided) {
+					if( exists && !replacing && !UserSaysOk( "Ok to replace?", "Discrete model output file specified already exists" ) )
+						userok = false;
+					if( userok && !tablef_open) {
+						tablef_open = true;
+						tablef.open( tablefname.c_str() );
+					}
+					if( exists && userok ) {
+						message = "\nReplacing discrete model output file ";
+						message += tablefname;
+					}
+					else if( userok ) {
+						message = "\nDiscrete model output file ";
+						message += tablefname;
+						message += " opened";
+					}
+					else {
+						errormsg = "Aborting the discrete optimization so as not to overwrite the file.\n";
+						throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+					}
+					PrintMessage();
+				}
+				
+				int origchosentree=chosentree;
+				int origdiscretechosenchar=discretechosenchar;
+				int charlooplimit=1;
+				if(charloop==true) {
+					charlooplimit=discretecharacters->GetNChar();
+				}
+				int looplimit=1;
+				int ntax=taxa->GetNumTaxonLabels();
+				if (treeloop==true) {
+					looplimit=trees->GetNumTrees();
+				}
+				if (globalstates || charloop) {
+					localnumbercharstates=numbercharstates;
+				}
+				tmessage="Tree\tTree weight\tTree name\tChar\tNo. states this char\tNo. states used\tModel\tStateFreq\tVariable Sites Only\tneglnL\tK\tAIC\tAICc\t";
+				for (int n=0; n<localnumbercharstates; n++) {
+					tmessage+="P(";
+					tmessage+=n;
+					tmessage+=")\t";
+				}
+				for (int i=0;i<localnumbercharstates;i++) {
+					for (int j=0;j<localnumbercharstates;j++) {
+						if (i!=j) {
+							tmessage+="q_";
+							tmessage+=i;
+							tmessage+="_";
+							tmessage+=j;
+							tmessage+="\t";
+						}
+					}
+				}
+				if (tablef_open && (!exists || !appending) ) {
+					tablef<<tmessage;
+				}
+				if (!globalstates && tablef_open) {
+					message="WARNING: if some characters have fewer than ";
+					message+=numbercharstates;
+					message+=" character states, the output in the output table will be wrong for those chars";
+					tmessage="\n";
+					tmessage+=message;
+					PrintMessage();
+					tmessage+="\n";
+					tablef<<tmessage;
+				}
+				for (int charnum=1;charnum<=charlooplimit;charnum++) {
+					if (charloop==true) {
+						discretechosenchar=charnum;
+					}
+					double weighttotal=0;
+					localnumbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+					if (globalstates) {
+						localnumbercharstates=numbercharstates;
+					}
+
+					
+					for (int treenum=1;treenum<=looplimit;treenum++) {
+						if (treeloop==true) {
+							chosentree=treenum;
+						}
+						double treeweight=trees->GetTreeWeight(chosentree-1);
+						weighttotal+=treeweight;
+						nxsstring treename=trees->GetTreeName(chosentree-1);
+						gsl_vector* output=DiscreteGeneralOptimization();
+						
+						/*for (int i=0; i<output->size;i++) {
+							cout<<gsl_vector_get(output,i)<<"\t";
+						}
+						cout<<endl;*/
+						message="Tree = ";
+						message+=chosentree;
+						message+=": ";
+						message+=treename;
+						message+="\n";
+						if (tablef_open) {
+							tmessage="\n";
+							tmessage+=chosentree;
+							tmessage+="\t";
+							tmessage+=treeweight;
+							tmessage+="\t";
+							tmessage+=treename;
+							tmessage+="\t";
+							if (allchar) {
+								tmessage+="ALL";
+							}
+							else {
+								tmessage+=discretechosenchar+1;
+							}
+							tmessage+="\t";
+							tmessage+=discretecharacters->GetObsNumStates(discretechosenchar);
+							tmessage+="\t";
+							tmessage+=numbercharstates;
+							tmessage+="\t";
+							if (discretechosenmodel==1) {
+								tmessage+="Equal";
+							}
+							else if (discretechosenmodel==2) {
+								tmessage+="Rev";
+							}
+							else if (discretechosenmodel==3) {
+								tmessage+="NonRev";
+							}
+							else if (discretechosenmodel==4) {
+								tmessage+="User";
+								tmessage+=": ( ";
+								tmessage+=usermatrix;
+								tmessage+=")";
+							}
+							tmessage+="\t";
+							
+							if (discretechosenstatefreqmodel==1) {
+								tmessage+="Uniform";
+							}
+							else if (discretechosenstatefreqmodel==2) {
+								tmessage+="Empirical";
+							}
+							else if (discretechosenstatefreqmodel==3) {
+								tmessage+="Equilibrium";
+							}
+							else if (discretechosenstatefreqmodel==4) {
+								tmessage+="Optimized";
+							}
+							else if (discretechosenstatefreqmodel==5) {
+								tmessage+="User";
+							}
+							tmessage+="\t";
+							if(variablecharonly) {
+								tmessage+="Yes\t";
+							}
+							else {
+								tmessage+="No\t";
+							}
+							tablef<<tmessage;
+						}
+						assert(output->size>0);
+						double likelihood=gsl_vector_get(output,-1+output->size);
+						double K=1.0*numberoffreeparameters;
+						double aicc=(2.0*likelihood)+2.0*K+2.0*K*(K+1.0)/(1.0*ntax-K-1.0); //AICc, n=1;
+						double aic=(2.0*likelihood)+2.0*K;
+						if (tablef_open) {
+							tmessage="";
+							tmessage+=likelihood;
+							tmessage+="\t";
+							tmessage+=numberoffreeparameters;
+							tmessage+="\t";
+							tmessage+=aic;
+							tmessage+="\t";
+							tmessage+=aicc;
+							tmessage+="\t";
+							tablef<<tmessage;
+						}
+						char outputstring[14];
+						message+="\n  -lnL = ";
+						sprintf(outputstring,"%14.6f",likelihood);
+						message+=outputstring;
+						message+="\n  AIC  = ";
+						sprintf(outputstring,"%14.6f",aic);
+						message+=outputstring;
+						message+="\n  AICc = ";
+						sprintf(outputstring,"%14.6f",aicc);
+						message+=outputstring;
+						tmessage="";
+						int vectorposition=0;
+						int position=-1; //used only in user-set model
+						message+="\n  Rates: ";
+						if (discretechosenmodel==1) {
+							message+="equal";
+						}
+						else if (discretechosenmodel==2) {
+							message+="reversible";
+						}
+						else if (discretechosenmodel==3) {
+							message+="nonreversible";
+						}
+						else if (discretechosenmodel==4) {
+							message+="user, with entry ( ";
+							message+=usermatrix;
+							message+=")";
+						}
+						
+						for (int i=0; i<localnumbercharstates;i++) {
+							for (int j=0; j<localnumbercharstates;j++) {
+								if (i!=j) {							
+								//cout<<i<<" "<<j<<" "<<vectorposition<<" "<<ratematassignvector.size()<<" "<<ratematfixedvector.size()<<" "<<output->size<<" "<<numberoffreeparameters<<endl;
+									if (discretechosenmodel==1) { //one rate
+										message+="\n    q_";
+										message+=i;
+										message+="_";
+										message+=j;
+										message+=" = ";		
+										message+=gsl_vector_get(output,0);
+										message+=" +/- ";
+										message+=gsl_vector_get(output,1);
+										vectorposition=2;
+										if (gsl_vector_get(output,0)<0.00000001 && !nonnegvariables) {
+											message+="  Warning: an estimate near zero sometimes makes estimating other parameters, and therefore the lnL, very imprecise. Play with numopt or the model";
+										}
+									}
+									if (discretechosenmodel==2) { //rev
+										if (i<j) {
+											message+="\n    q_";
+											message+=i;
+											message+="_";
+											message+=j;
+											message+=" = ";									
+											message+=gsl_vector_get(output,vectorposition);
+											message+=" +/- ";
+											message+=gsl_vector_get(output,vectorposition+numberoffreeparameters);
+										//since symmetric
+											message+="\n    q_";
+											message+=j;
+											message+="_";
+											message+=i;
+											message+=" = ";									
+											message+=gsl_vector_get(output,vectorposition);
+											message+=" +/- ";
+											message+=gsl_vector_get(output,vectorposition+numberoffreeparameters);
+											if (gsl_vector_get(output,vectorposition)<0.00000001 && !nonnegvariables) {
+												message+="  Warning: an estimate near zero sometimes makes estimating other parameters, and therefore the lnL, very imprecise. Play with numopt or the model";
+											}										
+											vectorposition++;
+											
+										}
+									}
+									if (discretechosenmodel==3) { //nonrev
+										message+="\n    q_";
+										message+=i;
+										message+="_";
+										message+=j;
+										message+=" = ";									
+										message+=gsl_vector_get(output,vectorposition);
+										message+=" +/- ";
+										message+=gsl_vector_get(output,vectorposition+numberoffreeparameters);
+										if (gsl_vector_get(output,vectorposition)<0.00000001 && !nonnegvariables) {
+											message+="  Warning: an estimate near zero sometimes makes estimating other parameters, and therefore the lnL, very imprecise. Play with numopt or the model";
+										}									
+										vectorposition++;
+									}
+									if (discretechosenmodel==4) { //user
+										message+="\n    q_";
+										message+=i;
+										message+="_";
+										message+=j;
+										message+=" = ";	
+										if (ratematassignvector[vectorposition]>=0) { //means there's an assigned rate
+											message+=ratematfixedvector[(ratematassignvector[vectorposition])];
+											message+=" FIXED";
+										}
+										else {
+											position=-1*(1+ratematassignvector[vectorposition]);
+											message+=gsl_vector_get(output,position);
+											message+=" +/- ";
+											assert((position+numberoffreeparameters)<output->size);
+											message+=gsl_vector_get(output,position+numberoffreeparameters);	
+											if (gsl_vector_get(output,position)<0.00000001 && !nonnegvariables) {
+												message+="  Warning: an estimate near zero sometimes makes estimating other parameters, and therefore the lnL, very imprecise. Play with numopt or the model";
+											}
+											
+										}
+										vectorposition++;
+									}
+								}
+							}
+						}
+						if (discretechosenmodel==4) {
+							vectorposition=position+1; //since we care about position in the output vector, which just has variable parameters.
+						}
+						if (discretechosenstatefreqmodel==1) {
+							message+="\n  Statefreqs: uniform";
+						}
+						else if (discretechosenstatefreqmodel==2) {
+							message+="\n  Statefreqs: empirical";
+						}
+						else if (discretechosenstatefreqmodel==3) {
+							message+="\n  Statefreqs: equilibrium";
+						}
+						else if (discretechosenstatefreqmodel==4) {
+							message+="\n  Statefreqs: optimized";
+						}					
+						else if (discretechosenstatefreqmodel==5) {
+							message+="\n  Statefreqs: user";
+						}
+						
+						for (int i=0; i<localnumbercharstates; i++) { //do ancestralstatevector for freqs
+							message+="\n    P(";
+							message+=i;
+							message+=") = ";							
+						//cout<<i<<" "<<vectorposition<<" "<<optimaldiscretecharstatefreq->size<<" "<<output->size<<" "<<numberoffreeparameters<<endl;
+							if (discretechosenstatefreqmodel==4) {
+								if (i<(localnumbercharstates-1)) {
+									message+=gsl_vector_get(output,vectorposition);
+									message+=" +/- ";
+									message+=gsl_vector_get(output,vectorposition+numberoffreeparameters);
+									vectorposition++;
+								}
+								else { //last number must be 1-sum(other states)
+									double frequencysum=0.0;
+									for (int j=0; j<i;j++) {
+										frequencysum+=gsl_vector_get(optimaldiscretecharstatefreq,j);
+									}
+									message+=1.0-frequencysum;
+								}
+							}
+							else {
+								message+=gsl_vector_get(optimaldiscretecharstatefreq,i);
+							}
+						}
+						
+						
+						
+						for (int n=0; n<localnumbercharstates; n++) {
+							/*message+="\n\tP(";
+							message+=n;
+							message+=") = ";
+							message+=gsl_vector_get(optimaldiscretecharstatefreq,n);*/
+							char outputstring[14];
+							sprintf(outputstring,"%E",gsl_vector_get(optimaldiscretecharstatefreq,n));
+							tmessage+=outputstring;						
+						//tmessage+=gsl_vector_get(optimaldiscretecharstatefreq,n);
+							tmessage+="\t";
+						}
+						for (int i=0;i<localnumbercharstates;i++) {
+							for (int j=0;j<localnumbercharstates;j++) {
+								if (i!=j) {
+									/*message+="\n\tq_";
+									message+=i;
+									message+="_";
+									message+=j;
+									message+=" = ";
+									message+=gsl_matrix_get(optimaldiscretecharQmatrix,i,j);*/
+									char outputstring[14];
+									sprintf(outputstring,"%E",gsl_matrix_get(optimaldiscretecharQmatrix,i,j));
+									tmessage+=outputstring;														
+								//tmessage+=gsl_matrix_get(optimaldiscretecharQmatrix,i,j);
+									tmessage+="\t";
+								}
+							}
+						}
+						if (tablef_open) {
+							tablef<<tmessage;
+						}
+						PrintMessage();
+						if (reconstruct) {
+							NodePtr newroot=EstimateMLDiscreteCharJointAncestralStates(optimaldiscretecharQmatrix,optimaldiscretecharstatefreq,breaknum);
+//(intrees.GetIthTree(chosentree-1)).SetRoot(newroot);
+						}
+						gsl_vector_free(output);
+					}
+				}
+				chosentree=origchosentree;
+				discretechosenchar=origdiscretechosenchar;
+				if (tablef_open) {
+					tablef.close();
+				}
+			}
+			/*double rateA=0.0000000000000000001;
 			while (rateA<100) {
 				double neglnL=CalculateDiscreteLindy1(rateA);
 				message="rateA=";
@@ -5375,19 +6120,464 @@ void BROWNIE::HandleDiscrete( NexusToken& token )
 				message+=gsl_vector_get(optimalrateB,i);
 				PrintMessage();
 			}
+			*/
+			/*
+			for (double rateA=0.000000001;rateA<1;rateA*=10) {
+				gsl_matrix* ratematrixA=gsl_matrix_calloc(2,2);
+				gsl_matrix_set(ratematrixA,0,0,0.0-rateA);
+				gsl_matrix_set(ratematrixA,0,1,rateA);
+				gsl_matrix_set(ratematrixA,1,0,rateA);
+				gsl_matrix_set(ratematrixA,1,1,0.0-rateA);
+				gsl_vector* basefreq=gsl_vector_calloc(2);
+				gsl_vector_set(basefreq,0,0.5);
+				gsl_vector_set(basefreq,1,0.5);
+				double lnL=CalculateDiscreteCharLnL(ratematrixA,basefreq);
+				cout<<"lnL="<<lnL<<" rate="<<rateA<<endl;
+				NodePtr newroot=EstimateMLDiscreteCharJointAncestralStates(ratematrixA,basefreq,0);
+				NodePtr newroot2=EstimateMLDiscreteCharJointAncestralStates(ratematrixA,basefreq,10);
+			}*/
+			
 			
             break;
         }
+		else if (token.Abbreviation("Breaknum")  ) {
+            nxsstring breaknumchar;
+            breaknumchar=GetFileName(token);
+            breaknum=atoi(breaknumchar.c_str());
+        }
+        else if (token.Abbreviation("Treeloop") ) {
+            nxsstring yesnotreeloop=GetFileName(token);
+            if (yesnotreeloop[0] == 'n') {
+                treeloop=false;
+            }
+            else {
+                treeloop=true;
+            }
+        }		
+        else if (token.Abbreviation("Charloop") ) {
+            nxsstring yesnocharloop=GetFileName(token);
+            if (yesnocharloop[0] == 'n') {
+                charloop=false;
+            }
+            else {
+                charloop=true;
+            }
+        }		
+		else if (token.Abbreviation("Globalstates") ) {
+            nxsstring yesnoglobalstates=GetFileName(token);
+            if (yesnoglobalstates[0] == 'n') {
+                globalstates=false;
+            }
+            else {
+                globalstates=true;
+            }
+        }		
+		
+		else if (token.Abbreviation("ALlchar") ) {
+            nxsstring yesnoallchar=GetFileName(token);
+            if (yesnoallchar[0] == 'n' || yesnoallchar[0] == 'N') {
+                allchar=false;
+            }
+            else {
+                allchar=true;
+            }
+        }		
+		else if (token.Abbreviation("Variable") ) {
+            nxsstring yesnovarchar=GetFileName(token);
+            if (yesnovarchar[0] == 'n' || yesnovarchar[0] == 'N') {
+                variablecharonly=false;
+            }
+            else {
+                variablecharonly=true;
+            }
+        }
+		else if( token.Abbreviation("Replace") ) {
+            nxsstring yesnoreplace=GetFileName(token);
+            if (yesnoreplace[0] == 'n') {
+                replacing=false;
+            }
+            else {
+                replacing=true;
+				appending=false;
+            }
+        }
+        else if( token.Abbreviation("APpend") ) {
+            nxsstring yesnoappend=GetFileName(token);
+            if (yesnoappend[0] == 'n') {
+                appending=false;
+            }
+            else {
+                appending=true;
+            }
+        }
+		
+        else if (token.Abbreviation("Reconstruct") ) {
+            nxsstring yesnoreconstruct=GetFileName(token);
+            if (yesnoreconstruct[0] == 'n') {
+                reconstruct=false;
+            }
+            else {
+                reconstruct=true;
+            }
+        }	
+		else if( token.Abbreviation("File") ) {
+            tablefname = GetFileName(token);
+            name_provided = true;
+        }		
+		else if( token.Abbreviation("Model") ) {
+            nxsstring chosenmodelinput=GetFileName(token);
+			//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+			int numberofrates=(localnumbercharstates*localnumbercharstates)-localnumbercharstates;
+			int ntax=taxa->GetNumTaxonLabels();
+            if (token.Abbreviation("Equal")) {
+                    discretechosenmodel=1;
+				message="You have chosen one rate for all discrete character transitions";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("Reversible")) {
+				discretechosenmodel=2;
+                message="You have chosen a time-reversible model: rates are free to vary, with the \nconstraint that forward and reverse rates for any two states are the same";
+				if (ntax*10<(numberofrates/2) && !allchar) {
+						message+="\n\nWARNING: You are trying to estimate ";
+					message+=numberofrates/2;
+					message+=" rates with only ";
+					message+=ntax;
+					message+=" taxa.";
+				}
+				else if (allchar && ntax*10*(discretecharacters->GetNChar())<(numberofrates/2)) {
+					message+="\n\nWARNING: You are trying to estimate ";
+					message+=numberofrates/2;
+					message+=" rates with only ";
+					message+=ntax;
+					message+=" taxa and ";	
+					message+=discretecharacters->GetNChar();
+					message+=" characters simultaneously.";
+				}
+                PrintMessage();
+            }
+            else if((token.Abbreviation("Nonreversible")) || (token.Abbreviation("Irreversible"))) {
+				discretechosenmodel=3;
+                message="You have chosen a non-time-reversible model: rates are free to vary";
+				if (ntax*10<(numberofrates) && !allchar) {
+					message+="\n\nWARNING: You are trying to estimate ";
+					message+=numberofrates;
+					message+=" rates with only ";
+					message+=ntax;
+					message+=" taxa.";
+				}
+				else if (allchar && ntax*10*(discretecharacters->GetNChar())<(numberofrates)) {
+					message+="\n\nWARNING: You are trying to estimate ";
+					message+=numberofrates;
+					message+=" rates with only ";
+					message+=ntax;
+					message+=" taxa and ";	
+					message+=discretecharacters->GetNChar();
+					message+=" characters simultaneously.";
+				}
+                PrintMessage();
+            }
+            else if(token.Abbreviation("User")) {
+				discretechosenmodel=4;
+                message="You have chosen a user-specified model";
+				PrintMessage();
+            }
+			
+            else {
+                errormsg = "Unexpected option (";
+                errormsg += chosenmodelinput;
+                errormsg += ") encountered reading Model command";
+                throw XNexus( errormsg);
+            }
+        }		
+		else if( token.Abbreviation("Freq") ) {
+            nxsstring chosenmodelinput=GetFileName(token);
+            if (token.Abbreviation("Uniform")) {
+				discretechosenstatefreqmodel=1;
+				message="You have chosen equal frequencies for all states";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("EMpirical")) {
+				discretechosenstatefreqmodel=2;
+                message="You have chosen to use empirical state frequencies";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("EQuilibrium")) {
+				discretechosenstatefreqmodel=3;
+                message="You have chosen to use equilibrium state frequencies";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("Optimized")) {
+				discretechosenstatefreqmodel=4;
+                message="You have chosen to optimize state frequencies";
+                PrintMessage();
+            }
+			else if(token.Abbreviation("User")) {
+				discretechosenstatefreqmodel=5;
+                message="You have chosen to use user-set state frequencies";
+                PrintMessage();
+            }
+            else {
+                errormsg = "Unexpected option (";
+                errormsg += chosenmodelinput;
+                errormsg += ") encountered reading Freq command";
+                throw XNexus( errormsg);
+            }
+        }	
+		else if( token.Abbreviation("Statevector") ) {
+			if (debugmode) {
+				cout<<"Now reading statevector"<<endl;
+			}
+            token.GetNextToken();
+            token.GetNextToken(); //eat the equals sign
+            vector<double> temporarystatevector;
+            if (!token.Equals("(")) {
+                errormsg="Expecting next token to be a \'(\' but instead got ";
+                errormsg+=token.GetToken();
+                throw XNexus( errormsg);
+            }
+            int inputcount=0;
+            while (!token.Equals(")")) {
+                nxsstring numbernexus;
+                numbernexus=GetNumberOnly(token);
+				if (debugmode) {
+					cout<<"pushing back with "<<numbernexus<<endl;
+				}
+                if (numbernexus!=")") {
+                    temporarystatevector.push_back(atof( numbernexus.c_str() ));
+                    inputcount++;
+                }
+                else {
+                    break;
+                }
+            }
+			if (debugmode) {
+				cout<<"finished with the pushback step"<<endl;
+			}
+			
+			//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+            if (inputcount!=localnumbercharstates) {
+                errormsg="You should have entered ";
+				errormsg+=localnumbercharstates;
+				errormsg+=" frequencies, you entered ";
+                errormsg+=inputcount;
+                throw XNexus( errormsg);
+            }
+            else {
+				double sumoffreqs=0;
+				for (int i=0; i<temporarystatevector.size(); i++) {
+					sumoffreqs+=temporarystatevector[i];
+				}
+                userstatefreqvector.clear();
+				message="Entering user frequencies of ( "; 
+                for (int i=0; i<temporarystatevector.size(); i++) {
+                    userstatefreqvector.push_back((temporarystatevector[i])/sumoffreqs);
+					message+=userstatefreqvector[i];
+					message+=" ";
+                }
+				message+=")";
+				PrintMessage();
+				
+            }
+        }		
         else if( token.Abbreviation("?") ) {
-            message="Usage: Discrete type = [ set | optimize ] states = [empirical | set | optimize] treeloop=[yes|no] allchar=[yes|no]\n\n";
-            message+="";
+			donesomething=true;
+            message="Usage: Discrete [model=] [freq=] [ratemat=] [statevector=] [treeloop=] [charloop=] [allchar=] [variable=] [reconstruct=] [breaknum=] [file=] [append=] [replace=] [globalstates=]\n\n";
+			message+="This is a function to calculate the likelihood estimates of discrete character evolution parameters and scores for these models. This will allow\n";
+			message+="you to do things like compare models with equal gain and loss rates with models which allow these to vary, evaluate models with a mixture of fixed\n";
+			message+="and free rates, reconstruct the joint likelihood estimates of ancestral states at nodes and at various points within branches, and more.\n\n";
             message+="Available options:\n\n";
-            message+="Keyword ---- Option type ----------------------------- Current setting -----";
-            message+="\n Type        Set                                       Set ";
-			message+="\n States                                                AncState=1";
-			message+="\n AllChar     Y/N                                       Yes";
-			message+="\n\nCurrent settings have ancestral state 1, has one model on branches with one state label\nand a different model on branches with another state label.\nThe same model is applied to all chars.";
+            message+="Keyword ------- Option type ----------------------------- Current setting -----";
+			message+="\n Model          <string>                                  ";
+			if (discretechosenmodel==1) {
+					message+="Equal";
+			}
+			else if (discretechosenmodel==2) {
+					message+="Rev";
+			}
+			else if (discretechosenmodel==3) {
+					message+="NonRev";
+			}
+			else if (discretechosenmodel==4) {
+					message+="User";
+			}
+			message+="\n Freq           <string>                                  ";
+			if (discretechosenstatefreqmodel==1) {
+				message+="Uniform";
+			}
+			else if (discretechosenstatefreqmodel==2) {
+				message+="Empirical";
+			}
+			else if (discretechosenstatefreqmodel==3) {
+				message+="Equilibrium";
+			}
+			else if (discretechosenstatefreqmodel==4) {
+				message+="Optimized";
+			}
+			else if (discretechosenstatefreqmodel==5) {
+				message+="User";
+			}
+			message+="\n RateMat        (<vector>)                                ";
+			if (usermatrix.size()>0) {
+				message+="( ";
+				message+=usermatrix;
+				message+=")";
+			}
+			else {
+				message+="Unspecified";
+			}			
+			message+="\n StateVector    (<vector>)                                ";
+			if ((userstatefreqvector.size())>1) {
+				message+="( ";
+				for (int i=0; i++; i<userstatefreqvector.size()) {
+					message+=userstatefreqvector[i];
+					message+=" ";
+				}
+				message+=")";
+			}
+			else {
+				message+="Unspecified";
+			}
+            message+="\n Treeloop       No|Yes                                    *No";
+            message+="\n Charloop       No|Yes                                    *No";
+			message+="\n AllChar        No|Yes                                     ";
+			if (allchar) {
+				message+="Yes";
+			}
+			else {
+				message+="No";
+			}
+			message+="\n Variable       No|Yes                                     ";
+			if (variablecharonly) {
+				message+="Yes";
+			}
+			else {
+				message+="No";
+			}
+            message+="\n Reconstruct    No|Yes                                    *No";
+            message+="\n Breaknum       <integer>                                 ";
+			message+=breaknum;
+			message+="\n File           <file name>                               *None";
+			message+="\n Append         No|Yes                                    *Yes";
+			message+="\n Replace        No|Yes                                    *No";
+			message+="\n GlobalStates   No|Yes                                    *No";
+            message+="\n                                                        *Option is nonpersistent\n";
+			message+="\nModel: Allows you to specify whether to use a USER-specified model, a model where all rates are EQUAL, a REVersible model where q_ij=q_ji\n";
+			message+="       for all states i and j but are otherwise free to vary, or an NONREVersible model where all rates can vary independently.";
+			message+="\nRateMat: A vector containing information about rate parameters. Note that only off-diagonal entries should be included.\n";
+			message+="         The model specification, except for the built-in types (equal, rev, nonrev), is grossly similar to PAUP's method for specifying\n";
+			message+="         which rates are constrained to be equal, plus allows fixing of certain values. For example, the following rate matrix:\n";
+			message+="                to->  0     1     2\n";
+			message+="               from ------------------\n";
+			message+="                 0 |  -     a    0.5\n";
+			message+="                 1 |  b     -     c\n";
+			message+="                 2 | 0.0    a     -\n";
+			message+="         means that rate q01 (instantaneous rate going from state 0 to state 1), with value a, must also equal rate q21 but is otherwise unconstrained\n";
+			message+="         (so they are both optimized, but forced to take the same value), while q20 is forced to a rate value of 0.0. We could have specified any\n";
+			message+="         non-negative fixed value. Basically, all rates sharing a letter take the same optimized rate value, while those assigned a number have a fixed\n";
+			message+="         rate value. To specify the above rate matrix, the command would be\n";
+			message+="		     \"discrete model=user ratemat=(a 0.5 b c 0.0 a)\"\n";
+			message+="         Letters are case-sensitive, so there are 52 (26*2) possible free rate parameters you can use in a user model.\n";
+			message+="Freq: The probability of each state at the root can be based on the EMPIRICAL distribution at the tips, can be SET by the user\n";
+			message+="      (using the statevector command), can be OPTIMIZEd as part of the model, can be set to EQUILIBRIUM frequencies (the\n";
+			message+="      frequencies expected with the optimized rate matrix given infinitely-long branches), or can be set to be UNIFORM (equal).\n";
+			message+="StateVector: Contains the user-specified probabilities of the ancestral states.\n";
+			message+="             Example: \"discrete freq=user statevector=(0.4 0.6)\" for a binary trait\n";
+			message+="Treeloop: Allows the analysis to be run across all the trees. A weighted average is returned (using tree weights such as posterior\n";
+			message+="          probabilities or bootstrap frequencies if they are available) as well as values for the individual trees.\n";
+			message+="Charloop: Allows the analysis to be run across all the characters individually.\n";
+			message+="Allchar: Estimates the model parameters using all the characters simultaneously, not based on a single character.\n";
+			message+="Variable: If true, performs a correction to correct rates for only examining variable characters.\n";
+			message+="Reconstruct: Using the likelihood rate matrix and state frequencies, reconstructs the joint estimates of the ancestral states\n";
+			message+="             at internal nodes and, optionally, along the branches. This uses the Pupko et al 2000 algorithm, which is fast but\n";
+			message+="             only returns the estimated states, not the confidence in these states.\n";
+			message+="Breaknum: Setting this value >0 allows the program to estimate the likeliest state at breaknum points along each branch. This can\n";
+			message+="          be useful in estimating when on a branch a character changed. Note that this may underestimate the number of changes on a\n";
+			message+="          branch (for example, on a very long branch which starts and ends in state 0, with high enough transition rates it may be\n";
+			message+="          probable that the character has changed  multiple times on that branch, but at any given instant on that branch, the likeliest\n";
+			message+="          state it will be in is state 0).\n";
+			message+="File: Saves all output into a tab-delimited file\n";
+			message+="Append: If the output file exists, appends to it rather than overwrites it. Turned on by default.\n";
+			message+="Replace: If set to yes, if the output file already exists it will be quietly replaced.\n";
+			message+="GlobalStates: If no, the number of character states assumed for each character is the maximum number of observed states for just that one character.\n";
+			message+="              If yes, the number of states for each character is the maximum number of states observed for any character, even if the observed character\n";
+			message+="              is lacking some of those states. This is useful if, for example, you have simulated a three state character on the tree for parametric\n";
+			message+="              bootstrapping but some of the simulations result in characters with just states 0 and 1. Globalstates will automatically be set to yes\n";
+			message+="              if allchar=y";
             PrintMessage();
+        }
+		else if( token.Abbreviation("Ratemat") ) {
+            token.GetNextToken();
+            token.GetNextToken(); //eat the equals sign
+            vector<double> temporaryratematfixedvector; //Will be a vector containing JUST the fixed values
+			vector<int> temporaryratematassignvector; //Will be a vector containing ints corresponding to "pointers" to either  fixed or variable values. If entries are non-negative,
+													//they point to entries in temporaryratematfixedvector (i.e., value of 2 means the rate is whatever is stored at temporaryratematfixedvector[2])
+													//negative values point to entries in a yet-to-be created vector of numbers to vary.
+			string tempfreerateletterstring;		//Allows mapping of letters on input to negative values in temporaryratematassignvector vector. New letters are appended, old ones are looked up
+			usermatrix=""; //just a string to store the description
+            if (!token.Equals("(")) {
+                errormsg="Expecting next token to be a \'(\' but instead got ";
+                errormsg+=token.GetToken();
+                throw XNexus( errormsg);
+            }
+            int inputcount=0;
+            while (!token.Equals(")")) {
+                nxsstring nextitem;
+                nextitem=GetNumberOnly(token);
+                if (nextitem!=")") {
+					usermatrix+=nextitem;
+					usermatrix+=" ";
+					if (isalpha(nextitem[0])) { //Is a letter -- means that parameter is free to vary, but has same value as other rates with that value
+						string::size_type loc = tempfreerateletterstring.find( nextitem[0], 0 );
+						if( loc != string::npos ) {
+							temporaryratematassignvector.push_back(-1*(loc+1));
+						} else {
+							tempfreerateletterstring.append(1,nextitem[0]);
+							temporaryratematassignvector.push_back(-1*(tempfreerateletterstring.size()));         
+						}
+					}
+					else { //is a number, which means it's a fixed value
+						temporaryratematassignvector.push_back(temporaryratematfixedvector.size());
+						temporaryratematfixedvector.push_back(atof( nextitem.c_str()));
+					}
+                    inputcount++;
+                }
+                else {
+                    break;
+                }
+            }
+			//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+			int expectednumberofentries=(localnumbercharstates*localnumbercharstates)-localnumbercharstates;
+            if (inputcount!=expectednumberofentries) {
+                errormsg="You should have entered ";
+				errormsg+=expectednumberofentries;
+				errormsg+=" values (the current character has ";
+				errormsg+=localnumbercharstates;
+				errormsg+="and so ";
+				errormsg+=expectednumberofentries;
+				errormsg+=" off-diagonal rates, you entered ";
+                errormsg+=inputcount;
+                throw XNexus( errormsg);
+            }
+            else {
+				freerateletterstring=tempfreerateletterstring;
+				ratematfixedvector.swap(temporaryratematfixedvector);
+				ratematassignvector.swap(temporaryratematassignvector);
+				if (debugmode) {
+					cout<<"usermatrix is "<<usermatrix<<endl;
+					cout<<"freerateletterstring is "<<freerateletterstring<<endl;
+					cout<<"ratematfixedvector = ( ";
+					for (int i=0;i<ratematfixedvector.size();i++) {
+						cout<<ratematfixedvector[i]<<" ";
+					}
+					cout<<")"<<endl;
+					cout<<"ratematassignvector = ( ";
+					for (int i=0;i<ratematassignvector.size();i++) {
+						cout<<ratematassignvector[i]<<" ";
+					}
+					cout<<")"<<endl;
+					
+				}
+            }
         }
 		
         else {
@@ -5397,6 +6587,294 @@ void BROWNIE::HandleDiscrete( NexusToken& token )
             throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
         }
     }
+}
+
+//Gets user commands for simulating characters on the tree and outputting them to a file
+void BROWNIE::HandleSimulateCharacters( NexusToken& token ) {
+	bool donenothing=true;
+	int n=100;
+	bool simtreeloop=false;
+	int chartype=0; //0=discrete, 1=continuous
+	nxsstring outputfilename="SimulatedChars.nex";
+    for(;;)
+    {
+        token.GetNextToken();
+        if( token.Equals(";") ) {
+            if (donenothing) {
+				if (chartype==0 && optimaldiscretecharQmatrix->size1<2) {
+					errormsg="Error: You must first input or optimize a model using the Discrete or Opt command";
+					throw XNexus (errormsg);
+				}
+                SimulateCharacters(n,chartype,outputfilename,simtreeloop);
+				//And  get output
+            }
+            break;
+        }
+        else if( token.Abbreviation("N") ) {
+            nxsstring numbernexus = GetNumber(token);
+            n=atoi( numbernexus.c_str() ); //convert to int
+            message="You have chosen to simulate ";
+            message+=n;
+			message+=" characters";
+            PrintMessage();
+            if (n<1) {
+                errormsg = "Error: must select a number greater than zero";
+                n=100;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+        }
+		else if( token.Abbreviation("File") ) {
+            outputfilename = GetFileName(token);
+			message="Setting output file to ";
+			message+=outputfilename;
+			PrintMessage();
+        }	
+		else if (token.Abbreviation("Treeloop") ) {
+            nxsstring yesnotreeloop=GetFileName(token);
+            if (yesnotreeloop[0] == 'y' || yesnotreeloop[0] == 'Y') {
+                simtreeloop=true;
+				message="Setting to loop over trees";
+				PrintMessage();
+            }
+            else {
+                simtreeloop=false;
+				message="Not looping over trees";
+				PrintMessage();
+            }
+        }		
+		else if (token.Abbreviation("Chartype") ) {
+            nxsstring inputchartype=GetFileName(token);
+            if (inputchartype[0] == 'd' || inputchartype[0] == 'D') {
+                chartype=0; //discrete char
+				message="Simulating discrete characters";
+				PrintMessage();
+            }
+            else {
+                chartype=1; //continuous char
+				message="WARNING: Simulating continuous characters does not work yet";
+				PrintMessage();
+            }
+        }				
+        else if( token.Abbreviation("?") ) {
+            donenothing=false;
+            message="Usage: Simulate n=<integer> chartype=<discrete/continuous> treeloop=<yes/no> file=<output file>\n\n";
+            message+="Simulates n discrete or continuous characters using the last optimized (or user-set) character model\n";
+			message+="and saves these into a nexus file, along with the tree used to generate them. If treeloop=yes, trees\n";
+			message+="are sampled for use in simulation based on their proportion of the total tree weight.\n\n";
+            message+="Available options:\n\n";
+            message+="Keyword ---- Option type ------------------------ Current setting --\n";
+            message+="n            <integer>                            100*\n";
+			message+="chartype     <discrete | continuous>              Discrete*\n";
+			message+="file         <output file name>                   SimulatedChars.nex*\n";
+			message+="treeloop     <yes | no>                           No*\n\n";
+			message+="                                                *means option is nonpersistent";                
+            message+="\n\n";
+            PrintMessage();
+        }
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading SIMULATE command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+}
+
+
+//Simulates discrete or continuous characters and puts them into a nexus file, suitable for later reading by Brownie
+void BROWNIE::SimulateCharacters(int n, int chartype, nxsstring outputfilename, bool treeloop) {
+	ofstream simulationf;
+	bool simulationf_open=false;
+	bool exists = FileExists( outputfilename.c_str() );
+	bool userok = true;
+	if( exists && !UserSaysOk( "Ok to replace?", "Simulated character output file specified already exists" ) )
+		userok = false;
+	if( userok && !simulationf_open) {
+		simulationf_open = true;
+		simulationf.open( outputfilename.c_str() );
+	}
+	if( exists && userok ) {
+		message = "\nReplacing simulation output file ";
+		message += outputfilename;
+		PrintMessage();
+
+	}
+	else if( userok ) {
+		message = "\nSimulation output file ";
+		message += outputfilename;
+		message += " opened";
+		PrintMessage();
+
+	}
+	else {
+		errormsg = "Aborting the simulation so as not to overwrite the file.\n";
+		throw XNexus( errormsg);
+	}
+	ProgressBar(n);
+	int ntax=taxa->GetNumTaxonLabels();
+	vector<nxsstring> charactermatrixvector;
+	vector<double> startingfreqcumulativevector;
+	int ntrees=trees->GetNumTrees();
+	simulationf<<"#nexus\n";
+	if(chartype==0) {
+		simulationf<<"[current best rate matrix = \n";
+	//int numbercharstates=optimaldiscretecharQmatrix->size1;
+		localnumbercharstates=optimaldiscretecharQmatrix->size1;
+		for (int i=0;i<localnumbercharstates;i++) {
+			for (int j=0;j<localnumbercharstates;j++) {
+				if (i!=j) {
+					simulationf<<gsl_matrix_get(optimaldiscretecharQmatrix,i,j);
+					simulationf<<"\t";
+				}
+				else {
+					simulationf<<"-\t";
+				}
+			}
+			simulationf<<"\n";
+		}
+		double frequencysum=0.0;
+		for (int i=0; i<localnumbercharstates; i++) { //do ancestralstatevector for freqs
+			simulationf<<"\n    P(";
+			simulationf<<i;
+			simulationf<<") = ";							
+			if (i<(localnumbercharstates-1)) {
+				frequencysum+=gsl_vector_get(optimaldiscretecharstatefreq,i);
+				simulationf<<gsl_vector_get(optimaldiscretecharstatefreq,i);
+				startingfreqcumulativevector.push_back(frequencysum);
+				
+			}
+			else {
+				startingfreqcumulativevector.push_back(1);
+				simulationf<<1.0-frequencysum;
+			}
+		}
+		simulationf<<"\n]\n\n";
+	}
+	simulationf<<"begin taxa;\ndimensions ntax="<<ntax<<";\ntaxlabels\n";
+	for (int i=0;i<ntax;i++) {
+		simulationf<<GetTaxonLabel(i)<<endl;
+		nxsstring newstringforvector="";
+		newstringforvector+=GetTaxonLabel(i);
+		newstringforvector+=" ";
+		charactermatrixvector.push_back(newstringforvector);
+	}
+	simulationf<<"\n;\nend;\n\n";
+	simulationf<<"begin trees;\n";
+	vector<double> treeweightvector;
+	double totaltreeweight=0;
+	for (int i=0;i<ntrees;i++) {
+		simulationf<<"tree "<<trees->GetTreeName(i);
+		simulationf<<" = [&W "<<trees->GetTreeWeight(i)<<" ] ";
+		Tree t=intrees.GetIthTree(i);
+		totaltreeweight+=trees->GetTreeWeight(i);
+		treeweightvector.push_back(totaltreeweight);
+		t.Write(simulationf);
+		simulationf<<"\n";
+	}
+	for (int i=0;i<ntrees;i++) {
+		treeweightvector[i]/=totaltreeweight; //standardize tree weights
+	}
+	simulationf<<"end;\n\n";
+	simulationf<<"begin characters;\ndimensions nchar="<<n<<" ntax="<<ntax<<";\nformat  datatype=";
+	if (chartype==0) {
+		simulationf<<"standard";
+	}
+	else if (chartype==1) {
+		simulationf<<"continuous";
+	}
+	simulationf<<";\nmatrix\n";
+	for (int i=0;i<n;i++) {
+		int oldchosentree=chosentree;
+		//gsl_vector *newtips=gsl_vector_calloc(ntax);
+		if (treeloop) {
+			double desiredweight=gsl_ran_flat (r,0.0,1.0);
+			for (int i=0;i<ntrees;i++) {
+				if (desiredweight<treeweightvector[i]) {
+					chosentree=i+1;
+					break;
+				}
+			}			
+		}
+		Tree T=intrees.GetIthTree(chosentree-1);
+				//Simulate up tree
+		double desiredstartingfreq=gsl_ran_flat (r,0.0,1.0);
+		int startingchar=0;
+		if (chartype==0) {
+			for (startingchar=0;startingchar<localnumbercharstates;startingchar++) {
+				if (desiredstartingfreq<startingfreqcumulativevector[startingchar]) {
+					break;
+				}
+			}	
+		}
+		//we've chosen a starting char
+		if(chartype==0) {
+			PreorderIterator <Node> m (T.GetRoot()); //Goes from root up
+			NodePtr currentnode = m.begin();
+			while (currentnode)
+			{
+				if (currentnode==T.GetRoot() ) {
+					currentnode->SetLabelNumber(startingchar); //just use label numbers to store ancestral states
+				}
+				if (currentnode!=T.GetRoot() ) {
+					int startstate=(currentnode->GetAnc())->GetLabelNumber();
+					int nextstate=0;
+					gsl_matrix * Pmatrix=ComputeTransitionProb(optimaldiscretecharQmatrix,currentnode->GetEdgeLength());
+					vector<double> Pancstatetopossiblenext;
+					double cumulativeP=0;
+					for (int endstate=0;endstate<localnumbercharstates;endstate++) {
+						cumulativeP+=gsl_matrix_get(Pmatrix,startstate,endstate);
+						Pancstatetopossiblenext.push_back(cumulativeP);
+					}
+					double randomprob=gsl_ran_flat(r,0.0,1.0);
+					for (nextstate=0;nextstate<localnumbercharstates;nextstate++) {
+						if (randomprob<Pancstatetopossiblenext[nextstate]) {
+							break;
+						}
+					}
+					if (currentnode->IsLeaf()) {
+						nxsstring newstate="";
+						newstate+=nextstate;
+						charactermatrixvector[taxa->FindTaxon(currentnode->GetLabel())]+=newstate;
+					//gsl_vector_set(newtips,taxa->FindTaxon(currentnode->GetLabel()),nextstate);
+					}
+					else {
+						currentnode->SetLabelNumber(nextstate);
+					}
+					gsl_matrix_free(Pmatrix);
+				}
+				currentnode=m.next();
+			}
+		}
+		if (chartype==1) {
+			if ((oldchosentree!=chosentree) || (i==0)) { //Either a first run or a new tree, so have to recalculate VCV and expected values
+				GetOptimalVCVAndTraitsContinuous();
+			}
+			gsl_vector *tipsfromthissim=gsl_vector_calloc(ntax);
+			if (debugmode) {
+				cout<<"optimal VCV = "<<endl;
+				PrintMatrix(optimalVCV);
+			}
+			tipsfromthissim=SimulateTips(optimalVCV, 1.0, optimalTraitMeans);
+			for (int taxonpos=0;taxonpos<ntax;taxonpos++) {
+				charactermatrixvector[taxonpos]+=gsl_vector_get(tipsfromthissim,taxonpos);
+				charactermatrixvector[taxonpos]+="\t";
+			}
+		}
+		
+		
+		
+		//for (int taxon=0;taxon<ntax;taxon++) {
+		//	charactermatrixvector[taxon]+=gsl_vector_get(newtips,taxon);
+		//}
+		//gsl_vector_free(newtips);
+		chosentree=oldchosentree;
+		ProgressBar(0);
+	}
+	for (int taxon=0;taxon<ntax;taxon++) {
+		simulationf<<charactermatrixvector[taxon]<<"\n";
+	}
+	simulationf<<";\nend;\n\n";
+	simulationf.close();
 }
 
 
@@ -5417,11 +6895,14 @@ void BROWNIE::MakeCombinedVCV(gsl_matrix *VCVcombined, gsl_matrix *VCVtoadd, int
     gsl_matrix_memcpy(&newview.matrix,VCVtoadd);
 }
 
-//Simulate tip values
+//Simulate continuous tip values
 gsl_vector* BROWNIE::SimulateTips(gsl_matrix * VCV, double rate, gsl_vector *MeanValues)
 {
     //Code inspired by John Burkardt, also based on code from Handbook of Simulation: Principles, Methodology, Advances, Applications, and Practice, Jerry Banks, ed. 1998.
+	//Code later changed to use ideas from http://www.mail-archive.com/help-gsl@gnu.org/msg00631.html by Ralph dos Santos Silva
     int ntax=VCV->size1;
+	//cout<<"Now simulating tips\n";
+	//PrintMatrix(VCV);
     gsl_vector *newtips=gsl_vector_calloc(ntax);
     gsl_matrix *A=gsl_matrix_calloc(ntax,ntax);
     int CopyResult= gsl_matrix_memcpy(A, VCV);
@@ -5431,11 +6912,479 @@ gsl_vector* BROWNIE::SimulateTips(gsl_matrix * VCV, double rate, gsl_vector *Mea
 	for (int i=0;i<ntax;i++) {
 		gsl_vector_set(randomvect,i,gsl_ran_ugaussian(r));
 	}
-	gsl_blas_dgemv (CblasNoTrans,1, A, randomvect,0, newtips);
+	gsl_blas_dtrmv(CblasLower, CblasNoTrans, CblasNonUnit, A, randomvect);
+	
+	//gsl_blas_dgemv (CblasNoTrans,1, A, randomvect,0, newtips); //Old method
+	for (int i=0;i<ntax;i++) {
+		//gsl_vector_set(newtips,i,gsl_vector_get(newtips,i)+gsl_vector_get(MeanValues,i));
+		gsl_vector_set(newtips,i,gsl_vector_get(randomvect,i)+gsl_vector_get(MeanValues,i));
+	}
 	gsl_matrix_free(A);
 	gsl_vector_free(randomvect);
+	/*if(1==1) {
+		gsl_vector *resid=gsl_vector_calloc(ntax);
+		gsl_vector_memcpy(resid,newtips);
+		double newancstate=GetAncestralState(DeleteStem(GetVCV(globalchosentaxset)),resid);
+		gsl_vector_add_constant(resid, -1.0*newancstate);
+		double newrate=EstimateRate(DeleteStem(GetVCV(globalchosentaxset)),resid);
+		cout<<"VCV rate = "<<(gsl_matrix_get(VCV,0,0))/(gsl_matrix_get(GetVCV(globalchosentaxset),0,0))<<endl;
+		cout<<"newrate="<<newrate<<endl<<"ancstate = "<<newancstate<<endl;
+		cout<<"newtips=( ";
+		for (int i=0;i<ntax;i++) {
+			cout<<gsl_vector_get(newtips,i)<<" ";
+		}
+		cout<<")\n";
+		
+		cout<<"mean values vect=( ";
+		for (int i=0;i<ntax;i++) {
+			cout<<gsl_vector_get(MeanValues,i)<<" ";
+		}
+		cout<<")\n\n";
+	}*/
     return newtips;
 
+}
+
+void BROWNIE::GetOptimalVCVAndTraitsContinuous()
+{
+	nxsstring chosentaxset=globalchosentaxset;
+	if (chosenmodel==1 && tipvariancetype!=1) {
+		int ntax=GetVCV(chosentaxset)->size1;
+		double rate=gsl_vector_get(optimalvaluescontinuouschar,0);
+	/*	if(1==1) {
+			cout<<"original rate = "<<rate<<endl;
+		}*/
+		gsl_matrix *VCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_vector * tipvariance=gsl_vector_calloc(ntax);
+		gsl_vector * observedtips=gsl_vector_calloc(ntax);
+		observedtips=GetTipValues(chosentaxset,chosenchar);
+		if (tipvariancetype==2) {
+			tipvariance=GetTipValues(chosentaxset,chosenchar+1);
+		}				
+		VCV=DeleteStem(GetVCV(chosentaxset));
+		gsl_matrix *RateTimesVCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(RateTimesVCV, VCV);
+		gsl_matrix_scale(RateTimesVCV,rate);
+		optimalVCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(optimalVCV,AddTipVarianceVectorToRateTimesVCV(DeleteStem(RateTimesVCV),tipvariance));
+		//gsl_vector_free(optimalTraitMeans);
+		optimalTraitMeans=gsl_vector_calloc(ntax);
+		double ancestralstate=GetAncestralState(optimalVCV,observedtips);
+		for (int taxon=0;taxon<ntax;taxon++) {
+			gsl_vector_set(optimalTraitMeans,taxon,ancestralstate);
+		}
+		gsl_vector_free(observedtips);
+		gsl_matrix_free(VCV);
+		gsl_vector_free(tipvariance);
+		gsl_matrix_free(RateTimesVCV);
+	}
+	else if (chosenmodel==5 && tipvariancetype!=1) { //BMS
+		int ntax=GetVCV(chosentaxset)->size1;
+		gsl_matrix * Matrix0=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix1=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix2=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix3=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix4=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix5=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix6=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix7=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix8=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix9=gsl_matrix_calloc(ntax,ntax);				
+		Matrix0=GetVCVforOneModel(chosentaxset,0);
+		Matrix1=GetVCVforOneModel(chosentaxset,1);
+		Matrix2=GetVCVforOneModel(chosentaxset,2);
+		Matrix3=GetVCVforOneModel(chosentaxset,3);
+		Matrix4=GetVCVforOneModel(chosentaxset,4);
+		Matrix5=GetVCVforOneModel(chosentaxset,5);
+		Matrix6=GetVCVforOneModel(chosentaxset,6);
+		Matrix7=GetVCVforOneModel(chosentaxset,7);
+		Matrix8=GetVCVforOneModel(chosentaxset,8);
+		Matrix9=GetVCVforOneModel(chosentaxset,9);
+		gsl_matrix *VCVtotal=gsl_matrix_calloc(ntax,ntax);
+		gsl_vector *tipvariance=gsl_vector_calloc(ntax);
+		if (tipvariancetype==2) {
+			tipvariance=GetTipValues(chosentaxset,chosenchar+1);
+		}				
+		int numberofmodels=-2+(optimalvaluescontinuouschar->size); //Do minus 2 because we have the lnL as an entry
+		
+		gsl_matrix *RateTimesVCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(RateTimesVCV, Matrix0);
+		gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,1));
+		gsl_matrix_add(VCVtotal,RateTimesVCV);
+		if (numberofmodels>1) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix1);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,2));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}
+		if (numberofmodels>2) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix2);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,3));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		if (numberofmodels>3) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix3);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,4));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}		
+		if (numberofmodels>4) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix4);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,5));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		if (numberofmodels>5) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix5);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,6));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		if (numberofmodels>6) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix6);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,7));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		if (numberofmodels>7) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix7);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,8));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		if (numberofmodels>8) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix8);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,9));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		if (numberofmodels>9) {
+			gsl_matrix_memcpy(RateTimesVCV, Matrix9);
+			gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,10));
+			gsl_matrix_add(VCVtotal,RateTimesVCV);
+		}	
+		optimalVCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(optimalVCV,AddTipVarianceVectorToRateTimesVCV(DeleteStem(VCVtotal),tipvariance));
+		optimalTraitMeans=gsl_vector_calloc(ntax);
+		for (int taxon=0;taxon<ntax;taxon++) {
+			gsl_vector_set(optimalTraitMeans,taxon,gsl_vector_get(optimalvaluescontinuouschar,0));
+		}
+		gsl_matrix_free(VCVtotal);
+		gsl_matrix_free(RateTimesVCV);
+		gsl_vector_free(tipvariance);
+		gsl_matrix_free(Matrix0);
+		gsl_matrix_free(Matrix1);
+		gsl_matrix_free(Matrix2);
+		gsl_matrix_free(Matrix3);
+		gsl_matrix_free(Matrix4);
+		gsl_matrix_free(Matrix5);
+		gsl_matrix_free(Matrix6);
+		gsl_matrix_free(Matrix7);
+		gsl_matrix_free(Matrix8);
+		gsl_matrix_free(Matrix9);		
+	}
+	else if (chosenmodel==6 && tipvariancetype!=1) { //BMC
+		int ntax=GetVCV(chosentaxset)->size1;
+		gsl_matrix * Matrix0=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix1=gsl_matrix_calloc(ntax,ntax);
+		Matrix0=GetVCVforChangeNoChange(chosentaxset,false); //branches with no changes
+		Matrix1=GetVCVforChangeNoChange(chosentaxset,true); //branches with changes
+		gsl_matrix *VCVtotal=gsl_matrix_calloc(ntax,ntax);
+		gsl_vector *tipvariance=gsl_vector_calloc(ntax);
+		if (tipvariancetype==2) {
+			tipvariance=GetTipValues(chosentaxset,chosenchar+1);
+		}						
+		gsl_matrix *RateTimesVCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(RateTimesVCV, Matrix0);
+		gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,1));
+		gsl_matrix_add(VCVtotal,RateTimesVCV);
+		gsl_matrix_memcpy(RateTimesVCV, Matrix1);
+		gsl_matrix_scale(RateTimesVCV,gsl_vector_get(optimalvaluescontinuouschar,2));
+		gsl_matrix_add(VCVtotal,RateTimesVCV);
+		optimalVCV=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(optimalVCV,AddTipVarianceVectorToRateTimesVCV(DeleteStem(VCVtotal),tipvariance));
+		optimalTraitMeans=gsl_vector_calloc(ntax);
+		for (int taxon=0;taxon<ntax;taxon++) {
+			gsl_vector_set(optimalTraitMeans,taxon,gsl_vector_get(optimalvaluescontinuouschar,0));
+		}
+		gsl_matrix_free(VCVtotal);
+		gsl_matrix_free(RateTimesVCV);
+		gsl_vector_free(tipvariance);
+		gsl_matrix_free(Matrix0);
+		gsl_matrix_free(Matrix1);
+		
+	}
+	else if(chosenmodel==12 && tipvariancetype!=1) {
+		int ntax=GetVCV(chosentaxset)->size1;
+		gsl_vector * Vector1=gsl_vector_calloc(ntax);
+		gsl_vector * Vector2=gsl_vector_calloc(ntax);
+		gsl_vector * tips=gsl_vector_calloc(ntax);
+		gsl_vector * variance=gsl_vector_calloc(ntax);
+		Vector1=GetTipValues(chosentaxset,chosenchar);
+		tips=GetTipValues(chosentaxset,chosenchar);
+		if (tipvariancetype==2) {
+			variance=GetTipValues(chosentaxset,chosenchar+1);
+		}		
+		gsl_matrix * Matrix0=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix1=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix2=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix3=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix4=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix5=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix6=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix7=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix8=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix * Matrix9=gsl_matrix_calloc(ntax,ntax);		
+		Matrix0=DeleteStem(GetVCV(chosentaxset));
+		gsl_matrix_free (Matrix1);
+		Matrix1=gsl_matrix_calloc(ntax,maxstartstops*ntax); //assumes that states change fewer than maxstartstops/2 times from root to any tip
+		Matrix1=GetStartStopTimesforOneState(chosentaxset,0);
+		//cout<<"Startstoptimes matrix 1"<<endl;
+		//PrintMatrix(Matrix1);
+		gsl_matrix_free (Matrix2);
+		Matrix2=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix2=GetStartStopTimesforOneState(chosentaxset,1);
+		gsl_matrix_free (Matrix3);
+		Matrix3=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix3=GetStartStopTimesforOneState(chosentaxset,2);
+		gsl_matrix_free (Matrix4);
+		Matrix4=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix4=GetStartStopTimesforOneState(chosentaxset,3);
+		gsl_matrix_free (Matrix5);
+		Matrix5=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix5=GetStartStopTimesforOneState(chosentaxset,4);
+		gsl_matrix_free (Matrix6);
+		Matrix6=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix6=GetStartStopTimesforOneState(chosentaxset,5);
+		gsl_matrix_free (Matrix7);
+		Matrix7=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix7=GetStartStopTimesforOneState(chosentaxset,6);
+		gsl_matrix_free (Matrix8);
+		Matrix8=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix8=GetStartStopTimesforOneState(chosentaxset,7);
+		gsl_matrix_free (Matrix9);
+		Matrix9=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+		Matrix9=GetStartStopTimesforOneState(chosentaxset,8);
+		
+		double rate=gsl_vector_get(optimalvaluescontinuouschar,0);
+		double attraction=gsl_vector_get(optimalvaluescontinuouschar,1);
+		int numberofmeans=-4+(optimalvaluescontinuouschar->size); //DO minus 4 here because we include the lnL
+		double rootmean=gsl_vector_get(optimalvaluescontinuouschar,2);
+		gsl_matrix *VCVtotal=gsl_matrix_calloc(ntax,ntax);
+		gsl_vector *tipvariance=gsl_vector_calloc(ntax);
+		gsl_vector *observedtips=gsl_vector_calloc(ntax);
+		gsl_vector *expectedtips=gsl_vector_calloc(ntax);
+		gsl_matrix *W_BK_A7=gsl_matrix_calloc(ntax,numberofmeans+1); //W matrix based on equation A7 of Butler and King
+		gsl_vector_memcpy(observedtips,Vector1);
+		gsl_vector_memcpy(tipvariance,Vector2);
+			//	if (detailedoutput) {
+			//		brownie.message="rate = ";
+			//		brownie.message+=rate;
+			//		brownie.message+=" attraction = ";
+			//		brownie.message+=attraction;
+			//		brownie.PrintMessage();
+			//	}
+		
+			//roottotiptime calculation (and probably this OU model in general) assumes the taxa are coeval.
+		double roottotiptime=gsl_matrix_get(Matrix0,0,0);	
+		gsl_matrix * BranchingTimes=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(BranchingTimes, Matrix0);
+		gsl_matrix * ScaledVCV=gsl_matrix_calloc(ntax,ntax);
+		double exptonegalphaT=gsl_sf_exp(-1.0*attraction*roottotiptime);
+		for (int rowtaxon=0;rowtaxon<ntax;rowtaxon++) {
+			for (int coltaxon=0;coltaxon<ntax;coltaxon++) {
+				gsl_matrix_set(ScaledVCV,rowtaxon,coltaxon,(0.5*rate/attraction)*(gsl_sf_exp(-2.0*attraction*(roottotiptime-gsl_matrix_get(BranchingTimes,rowtaxon,coltaxon))))*(1.0-(gsl_sf_exp(-2.0*attraction*(gsl_matrix_get(BranchingTimes,rowtaxon,coltaxon))))));
+			}
+			gsl_matrix_set(W_BK_A7,rowtaxon,0,exptonegalphaT);
+			if (numberofmeans>0) { //Here's where we do Butler and King A7
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix1,rowtaxon,chosencolumn)); //if we don't have entries, we'll be taking e^0-e^0=0
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix1,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,1,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>1) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix2,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix2,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,2,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>2) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix3,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix3,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,3,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>3) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix4,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix4,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,4,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>4) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix5,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix5,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,5,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>5) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix6,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix6,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,6,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>6) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix7,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix7,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,7,exptonegalphaT*runningtotal);
+			}
+			if (numberofmeans>7) { 
+				double runningtotal=0;
+				int chosencolumn=0;
+				while (chosencolumn<maxstartstops*ntax) {
+					runningtotal+=gsl_sf_exp(attraction*gsl_matrix_get(Matrix8,rowtaxon,chosencolumn)); 
+					chosencolumn++;
+					runningtotal+=-1.0*gsl_sf_exp(attraction*gsl_matrix_get(Matrix8,rowtaxon,chosencolumn));
+					chosencolumn++;
+				}
+				gsl_matrix_set(W_BK_A7,rowtaxon,8,exptonegalphaT*runningtotal);
+			}
+		}
+		
+		gsl_matrix *VCVfinal=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(VCVfinal,AddTipVarianceVectorToRateTimesVCV(DeleteStem(ScaledVCV),tipvariance));
+		gsl_vector *tipresiduals=gsl_vector_calloc(ntax);
+		gsl_vector *tipexpectations=gsl_vector_calloc(ntax);
+		gsl_vector * OUmeans=gsl_vector_calloc(numberofmeans+1);
+		gsl_vector_set(OUmeans,0,rootmean);
+		for (int position=1;position<=numberofmeans;position++) {
+			gsl_vector_set(OUmeans,position,gsl_vector_get(optimalvaluescontinuouschar,position+2));
+		}
+		gsl_blas_dgemv (CblasNoTrans,1, W_BK_A7, OUmeans,0, tipexpectations); 
+		optimalVCV=gsl_matrix_calloc(ntax,ntax); 
+		gsl_matrix_memcpy(optimalVCV,VCVfinal);
+		optimalTraitMeans=gsl_vector_calloc(ntax); 
+		gsl_vector_memcpy(optimalTraitMeans,tipexpectations);
+		cout<<"W matrix"<<endl;
+		PrintMatrix(W_BK_A7);
+		cout<<"\nVCVfinal"<<endl;
+		PrintMatrix(VCVfinal);
+		cout<<"\nOUmeans = (";
+		for (int i=0;i<OUmeans->size;i++) {
+			cout<<" "<<gsl_vector_get(OUmeans,i);
+		}
+		cout<<" )"<<endl;
+		//calculate real optimized means
+		gsl_matrix *Wtranspose=gsl_matrix_calloc(W_BK_A7->size2,W_BK_A7->size1);
+		gsl_matrix_transpose_memcpy (Wtranspose,W_BK_A7);
+		gsl_matrix *scaledVCVtilde=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix_memcpy(scaledVCVtilde,ScaledVCV);
+		gsl_matrix_scale(scaledVCVtilde,1.0/rate);
+		gsl_matrix *InversescaledVCVtildestart=gsl_matrix_calloc(ntax,ntax);
+		gsl_matrix *InversescaledVCVtilde=gsl_matrix_calloc(ntax,ntax);
+		gsl_vector *A8OUmeans=gsl_vector_calloc(numberofmeans+1);
+		gsl_permutation * p = gsl_permutation_alloc (ntax);
+		int signum;
+		gsl_matrix_memcpy (InversescaledVCVtildestart, scaledVCVtilde);
+		gsl_linalg_LU_decomp (InversescaledVCVtildestart,p, &signum);
+		gsl_linalg_LU_invert (InversescaledVCVtildestart,p, InversescaledVCVtilde);
+		//OUmeans=(W'(V^-1)W)W'(V^-1)tips
+		//VecA=(V^-1)tips
+		//VecB=W'VecA
+		//MatC=(V^-1)W
+		//MatD=W'MatC
+		//OUmeans=MatD*VecB
+		gsl_vector *VecA=gsl_vector_calloc(ntax);
+		gsl_vector *VecB=gsl_vector_calloc(numberofmeans+1);
+		gsl_matrix *MatC=gsl_matrix_calloc(W_BK_A7->size1,W_BK_A7->size2);
+		gsl_matrix *MatD=gsl_matrix_calloc(numberofmeans+1,numberofmeans+1);
+		gsl_blas_dgemv (CblasNoTrans, 1.0, InversescaledVCVtilde, observedtips, 0.0, VecA);
+		cout<<"Wtranspose row = "<<Wtranspose->size1<<" col = "<<Wtranspose->size2<<endl;
+		cout<<"W_BK_A7 row = "<<W_BK_A7->size1<<" col = "<<W_BK_A7->size2<<endl;
+		cout<<"VecA size = "<<VecA->size<<endl<<"VecB size = "<<VecB->size<<endl;
+		gsl_blas_dgemv (CblasNoTrans, 1.0, Wtranspose, VecA, 0.0, VecB);
+		gsl_blas_dgemm (CblasNoTrans,CblasNoTrans, 1.0, InversescaledVCVtilde, W_BK_A7, 0.0, MatC);
+		gsl_blas_dgemm (CblasNoTrans,CblasNoTrans, 1.0, Wtranspose, MatC, 0.0, MatD);
+		gsl_blas_dgemv (CblasNoTrans, 1.0, InversescaledVCVtilde, observedtips, 0.0, VecA);
+		gsl_blas_dgemv (CblasNoTrans, 1.0, MatD, VecB, 0.0, A8OUmeans);
+		cout<<"VecA"<<endl;
+		PrintVector(VecA);
+		cout<<"VecB"<<endl;
+		PrintVector(VecB);
+		cout<<"MatC"<<endl;
+		PrintMatrix(MatC);
+		cout<<"MatD"<<endl;
+		PrintMatrix(MatD);
+		
+		cout<<"Recontructed OU means using Butler King A8\n   (";
+		for (int i=0;i<A8OUmeans->size;i++) {
+			cout<<" "<<gsl_vector_get(A8OUmeans,i);
+		}
+		cout<<" )"<<endl;
+		gsl_vector_free(A8OUmeans);
+		gsl_vector_free(VecA);
+		gsl_vector_free(VecB);
+		gsl_matrix_free(MatC);
+		gsl_matrix_free(MatD);
+		gsl_permutation_free (p);
+		gsl_matrix_free(Wtranspose);
+		gsl_matrix_free(scaledVCVtilde);
+		gsl_matrix_free(InversescaledVCVtildestart);
+		gsl_matrix_free(InversescaledVCVtilde);
+		gsl_matrix_free (VCVfinal);
+		gsl_vector_free (tipresiduals);
+		gsl_vector_free (tipexpectations);
+		gsl_vector_free (OUmeans);
+		gsl_matrix_free(BranchingTimes);
+		gsl_matrix_free(ScaledVCV);
+		gsl_matrix_free(VCVtotal);
+		gsl_vector_free(tipvariance);
+		gsl_vector_free(observedtips);
+		gsl_vector_free(expectedtips);
+		gsl_matrix_free(W_BK_A7);		
+		gsl_matrix_free(Matrix0);
+		gsl_matrix_free(Matrix1);
+		gsl_matrix_free(Matrix2);
+		gsl_matrix_free(Matrix3);
+		gsl_matrix_free(Matrix4);
+		gsl_matrix_free(Matrix5);
+		gsl_matrix_free(Matrix6);
+		gsl_matrix_free(Matrix7);
+		gsl_matrix_free(Matrix8);
+		gsl_matrix_free(Matrix9);
+		gsl_vector_free(Vector1);
+		gsl_vector_free(Vector2);
+		gsl_vector_free(tips);
+		gsl_vector_free(variance);
+	}
 }
 
 
@@ -5657,7 +7606,7 @@ gsl_vector_free(step1vect);
 gsl_vector_free(step2vect);
 gsl_matrix_free(RateTimesVCVLU);
 gsl_permutation_free (p);
-return lscore;
+return lscore; //-lnL actually
 }
 
 
@@ -5768,13 +7717,16 @@ void BROWNIE::HandleRateTest( NexusToken& token )
             }
             chosentaxset=GetFileName(token);
             chosentaxSETS.insert(chosentaxset);
-
+			
             listedtaxsets++;
             IntSet& taxonlist = assumptions->GetTaxSet( chosentaxset );
             if (taxonlist.empty()) {
-                errormsg= "Error: Taxset ";
+				errormsg="Error: Taxset ";
                 errormsg+=chosentaxset.c_str();
                 errormsg+=" does not exist.\nYou can define it using the taxset command.";
+				assumptions->Report(cerr);
+				if( logf_open )
+					assumptions->Report(logf);		
                 throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
             }
 IntSet::const_iterator xi;
@@ -5876,11 +7828,11 @@ IntSet::const_iterator xi;
             tmessage+=n+1;
             tmessage+="\trate_";
             tmessage+=n+1;
-            tmessage+="\t lnL_";
+            tmessage+="\t -lnL_";
             tmessage+=n+1;
             tmessage+="\t";
         }
-        tmessage+="rate_A\tparam_A\tparam_B\tAIC_A\tAIC_B\tAICc_A\tAICc_B\t lnL_A\t lnL_B\tAIC dif\tAICc diff\tchi p\tparam p\tchosen model under AIC, AICc, chi, param\n";
+        tmessage+="rate_A\tparam_A\tparam_B\tAIC_A\tAIC_B\tAICc_A\tAICc_B\t -lnL_A\t -lnL_B\tAIC dif\tAICc diff\tchi p\tparam p\tchosen model under AIC, AICc, chi, param\n";
         if (tablef_open) {
             tablef<<tmessage;
         }
@@ -5897,7 +7849,7 @@ IntSet::const_iterator xi;
         }
         if (charloop) {
             startchar=1;
-            stopchar=characters->GetNChar();
+            stopchar=continuouscharacters->GetNChar();
         }
         else {
             startchar=chosenchar;
@@ -6089,7 +8041,7 @@ for (chosenchar=startchar;chosenchar<=stopchar;chosenchar++) {
             message+=ancstate;
             message+="\n    Rate = ";
             message+=rate;
-            message+="\n    lnL = ";
+            message+="\n    -lnL = ";
             message+=likelihood;
             message+="\n";
             if (tablef_open) {
@@ -6119,13 +8071,13 @@ for (chosenchar=startchar;chosenchar<=stopchar;chosenchar++) {
         double ratecomb;
         double likelihoodsingleparametermodel;
         ratecomb=EstimateRate(VCVcomb,tipscombresid);
-        likelihoodsingleparametermodel=GetLScore(VCVcomb,tipscombresid,ratecomb);
+        likelihoodsingleparametermodel=GetLScore(VCVcomb,tipscombresid,ratecomb); //-lnL actually
         double K1=listedtaxsets+1; //One ancestral state parameter for each taxset, plus one rate parameter
         double K2=2*listedtaxsets; //One ancestral state parameter and one rate parameter for each taxset.
-        double model1aicc=(2*likelihoodsingleparametermodel)+2*K1+2*K1*(K1+1)/(ntaxcomb-K1-1); //AICc, n=1;
-        double model2aicc=(2*likelihoodmultiparametermodel)+2*K2+2*K2*(K2+1)/(ntaxcomb-K2-1);
-        double model1aic=(2*likelihoodsingleparametermodel)+2*K1;
-        double model2aic=(2*likelihoodmultiparametermodel)+2*K2;
+        double model1aicc=(2*likelihoodsingleparametermodel)+2.0*K1+2.0*K1*(K1+1)/(ntaxcomb-K1-1); //AICc, n=1;
+        double model2aicc=(2*likelihoodmultiparametermodel)+2.0*K2+2.0*K2*(K2+1)/(ntaxcomb-K2-1);
+        double model1aic=(2*likelihoodsingleparametermodel)+2.0*K1;
+        double model2aic=(2*likelihoodmultiparametermodel)+2.0*K2;
         if ((ntaxcomb-K1-1)==0) {
             message+="\nWARNING: In the single rate parameter model,\n   there are ";
             message+=K1;
@@ -6164,7 +8116,7 @@ for (chosenchar=startchar;chosenchar<=stopchar;chosenchar++) {
         //    cout<<"(ntaxcomb-K2-1)="<<(ntaxcomb-K2-1)<<endl;
 
         // }
-        message+="\n  Single rate parameter model (model A):\n     lnL = ";
+        message+="\n  Single rate parameter model (model A):\n     -lnL = ";
         sprintf(outputstring,"%14.6f",likelihoodsingleparametermodel);
         message+=outputstring;
         message+="\n    AIC =  ";
@@ -6177,7 +8129,7 @@ for (chosenchar=startchar;chosenchar<=stopchar;chosenchar++) {
         message+=ratecomb;
         gsl_vector_set(weightedratevector,0,gsl_vector_get(weightedratevector,0)+(treeweight*ratecomb));
         //weightedratevector[0]+=ratecomb*treeweight;
-        message+="\n\n  Multiple rate parameter model (model B):\n     lnL = ";
+        message+="\n\n  Multiple rate parameter model (model B):\n     -lnL = ";
         sprintf(outputstring,"%14.6f",likelihoodmultiparametermodel);
         message+=outputstring;
         message+="\n    AIC =  ";
@@ -6608,28 +8560,38 @@ void BROWNIE::NumOpt( NexusToken& token)
             message="Usage: NumOpt [options...]\n\n";
             message+="This sets options for numerical optimization\n";
             message+="Available options:\n\n";
-            message+="Keyword ---- Option type ------------------------ Current setting --";
-            message+="\n Iter        <integer>                            ";
+            message+="Keyword ------ Option type ------------------------ Current setting --";
+            message+="\n Iter          <integer>                            ";
             message+=maxiterations;
-            message+="\n Toler       <double>                             ";
+            message+="\n Toler         <double>                             ";
             char outputstring[10];
             sprintf(outputstring,"%1.9f",stoppingprecision);
             message+=outputstring;
-            message+="\n RandStart   <integer>                            ";
+            message+="\n RandStart     <integer>                            ";
             message+=randomstarts;
-            message+="\n Seed        <integer>                            ";
+            message+="\n Seed          <integer>                            ";
             message+=gslseedtoprint;
-            message+="\n StepSize    <double>                             ";
+            message+="\n StepSize      <double>                             ";
             sprintf(outputstring,"%1.9f",stepsize);
             message+=outputstring;
-            message+="\n Detail      Yes|No                               ";
+            message+="\n Detail        Yes|No                               ";
             if (detailedoutput) {
                 message+="Yes";
             }
             else {
                 message+="No";
             }
-            message+="\n\nIter sets the maximum number of iterations of the Nelder-Mead simplex algorithm.\n\nToler sets the precision of the stopping criterion: what amount\nof change in the likelihood is considered small enough to count as zero change.\n\nRandStart sets the number of random starts to use.\n\nStepSize sets the NM step size.\n\nDetail specifies whether or not to have detailed output from numerical optimization";
+			message+="\n Redo          Yes|No                               ";
+            if (redobad) {
+                message+="Yes";
+            }
+            else {
+                message+="No";
+            }
+			message+="\n GiveUpFactor  <integer>                            ";
+            message+=giveupfactor;
+
+            message+="\n\nIter sets the maximum number of iterations of the Nelder-Mead simplex algorithm.\n\nToler sets the precision of the stopping criterion: what amount\nof change in the likelihood is considered small enough to count as zero change.\n\nRandStart sets the number of random starts to use.\n\nStepSize sets the NM step size.\n\nDetail specifies whether or not to have detailed output from numerical optimization\n\nRedo specifies whether to redo reps which stop due to iteration limits\n\nGiveUpFactor, when redo=yes, is used to tell the software when to stop restarting: when the ratio of unsuccessful to successful starts is > giveupfactor";
             PrintMessage();
         }
         else if( token.Abbreviation("Iter") ) {
@@ -6640,7 +8602,7 @@ void BROWNIE::NumOpt( NexusToken& token)
             nxsstring numbernexus = GetNumber(token);
             stoppingprecision=atof( numbernexus.c_str() );
         }
-        else if( token.Abbreviation("Randstart") ) {
+        else if( token.Abbreviation("RAndstart") ) {
             nxsstring numbernexus = GetNumber(token);
             randomstarts=atoi( numbernexus.c_str() ); //convert to int
         }
@@ -6661,6 +8623,19 @@ void BROWNIE::NumOpt( NexusToken& token)
                 detailedoutput=true;
             }
         }
+		else if( token.Abbreviation("REdo") ) {
+            nxsstring yesnodetail=GetFileName(token);
+            if (yesnodetail[0] == 'n') {
+                redobad=false;
+            }
+            else {
+                redobad=true;
+            }
+        }
+		else if( token.Abbreviation("Giveupfactor") ) {
+            nxsstring numbernexus = GetNumber(token);
+            giveupfactor=atoi( numbernexus.c_str() ); //convert to int
+        }		
         else if( token.Abbreviation("STepsize") ) {
             nxsstring numbernexus = GetNumber(token);
             stepsize=atof( numbernexus.c_str() );
@@ -6675,6 +8650,56 @@ void BROWNIE::NumOpt( NexusToken& token)
 
 }
 
+
+void BROWNIE::HandleOrderByTree( NexusToken& token)
+{
+	bool donesomething=false;
+    for(;;)
+    {
+        token.GetNextToken();
+
+        if( token.Equals(";") ) {
+            break;
+        }
+        else if( token.Abbreviation("?") ) {
+            message="This will reorder taxa and data so that taxa adjacent on the tree\nare adjacent in the data matrix\n\n";
+            PrintMessage();
+			donesomething=true;
+        }
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading GARLAND command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+	if (!donesomething) { //Means we want to output the matrix
+		if (intrees.GetNumTrees()==0) {
+			errormsg="First load a tree (include in the input file)";
+			throw XNexus( errormsg );
+		}
+		else {
+			nxsstring exportfname="ReorderedTaxonNames.nex";
+			exportf.open( exportfname.c_str(), ios::out | ios::app );
+			Tree t = intrees.GetIthTree(chosentree-1);
+			NodeIterator <Node> n (t.GetRoot());
+			NodePtr cur = n.begin();
+			while (cur) {
+				if (cur->IsLeaf()) {
+					exportf<<cur->GetLabel()<<" ";
+					nxsstring currenttaxonlabel=(cur->GetLabel()).c_str();
+					int taxonnumber=TaxonLabelToNumber( currenttaxonlabel );
+					for (int charnumber=0; charnumber<(discretecharacters->GetNChar()); charnumber++) {
+						discretecharacters->ShowStateLabels(exportf, taxonnumber-1, charnumber);
+					}
+					exportf<<endl;
+				}
+				cur = n.next();
+			}
+			exportf.close();
+		}
+	}
+}
 
 /**@method Garland
 *Spits out values to use to compare Brownie's performance with other programs
@@ -7307,6 +9332,12 @@ void BROWNIE::NexusError( nxsstring& msg, streampos /* pos */, long line, long c
         message += col;
         PrintMessage();
     }
+	if (quit_onerr) {
+		message = "Quitting on error. To change this, type \"noquitonerr\"";
+		PrintMessage();
+		quit_now=true;
+		exit(EXIT_FAILURE);
+	}	
 }
 
 /**
@@ -7405,11 +9436,15 @@ void BROWNIE::PurgeBlocks()
     trees = new TreesBlock(*taxa);
     assumptions = new AssumptionsBlock( *taxa );
     characters = new CharactersBlock( *taxa, *assumptions );
+	characters2 = new CharactersBlock2( *taxa, *assumptions );
 
     Add( taxa );
     Add( trees );
     Add( assumptions );
     Add( characters );
+	Add( characters2 );
+	
+	
 }
 
 void BROWNIE::Assign(NexusToken& token)
@@ -7446,6 +9481,7 @@ void BROWNIE::Assign(NexusToken& token)
                     //cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 }
                 convertsamplestospecies.push_back(assignment);
+				
             }
             bool changedmaxnum=false;
             for (int i=0;i<convertsamplestospecies.size();i++) {
@@ -7938,7 +9974,7 @@ double BROWNIE::GetGTPScoreNew(ContainingTree *SpeciesTreePtr)
 //                    cout<<"Potential error getting tree score, trying to recover...";
 //                }
 //                if (badgtpcount>10000) {
-//                    cout<<"Has failed, aborting. Email bcomeara@ucdavis.edu with this message, also include the info below:\n\n";
+//                    cout<<"Has failed, aborting. Email brownie@brianomeara.info with this message, also include the info below:\n\n";
 //                    cout<<OutputForGTP(SpeciesTreePtr)<<endl;
 //                    errormsg="Aborted";
 //                    throw XNexus( errormsg);
@@ -8003,7 +10039,33 @@ void BROWNIE::OutputComment( nxsstring& msg )
 void BROWNIE::Read( NexusToken& token )
 {
     isEmpty = false;
-
+	//need to  have these called here so that any brownie commands using characters work properly
+	if(!characters->IsEmpty() ) {
+		if (characters->GetDataType()==6) {
+			continuouscharacters=characters;
+			//cout<<"Found continuous characters\n";
+		}
+		else {
+			discretecharacters=characters;
+			numbercharstates=discretecharacters->GetMaxObsNumStates();
+			localnumbercharstates=numbercharstates;
+			//cout<<"Found discrete characters\n";
+		}
+	}
+	
+	if(!characters2->IsEmpty() ) {
+		if (characters2->GetDataType()==6) {
+			continuouscharacters=characters2;
+			//cout<<"Found continuous characters\n";
+		}
+		else {
+			discretecharacters=characters2;
+			numbercharstates=discretecharacters->GetMaxObsNumStates();	
+			localnumbercharstates=numbercharstates;
+			//cout<<"Found discrete characters\n";
+		}
+	}
+	
     // this should be the semicolon after the block name
     //
     token.GetNextToken();
@@ -8046,7 +10108,7 @@ void BROWNIE::Read( NexusToken& token )
         else if( token.Abbreviation("SEt") ) {
             HandleSet( token );
         }
-        else if( token.Abbreviation("COmpare") ) {
+        else if( token.Abbreviation("COMpare") ) {
             HandleCompareRandomTrees( token );
         }
         else if( token.Abbreviation("HSearch") ) {
@@ -8074,7 +10136,10 @@ void BROWNIE::Read( NexusToken& token )
 		else if( token.Abbreviation("ACcuracy") ) {
             HandleAccuracy( token );
         }
-        else if( token.Abbreviation("Showtree") ) {
+		else if( token.Abbreviation("PARtitionededgesupport") ) {
+            HandlePartitionedEdgeSupport( token );
+        }
+        else if( token.Abbreviation("SHowtree") ) {
             HandleShowtree( token );
         }
         else if( token.Abbreviation("Blocks") ) {
@@ -8095,6 +10160,9 @@ void BROWNIE::Read( NexusToken& token )
 		else if( token.Abbreviation("DIscrete") ) {
 			HandleDiscrete( token );
 		}
+		else if( token.Abbreviation("SIMulate") ) {
+			HandleSimulateCharacters( token );
+		}
 		else if( token.Abbreviation("LOss") ) {
 			HandleLoss( token );
 		}
@@ -8103,6 +10171,9 @@ void BROWNIE::Read( NexusToken& token )
         }
         else if( token.Abbreviation("Debug") ) {
             HandleDebug( token );
+        }
+		else if( token.Abbreviation("NOQuitonerror") ) {
+            HandleNoQuitOnErr( token );
         }
         else if (token.Abbreviation("PREorder") ) {
             PreOrderTraversal(token);
@@ -8113,7 +10184,7 @@ void BROWNIE::Read( NexusToken& token )
         else if (token.Abbreviation("EXport") ) {
             HandleExport(token);
         }
-        else if ( token.Abbreviation("OPtimization") ) {
+        else if ( token.Abbreviation("OPtimization") || token.Abbreviation("CONtinuous") ) {
             HandleDebugOptimization( token );
         }
         else if ( token.Abbreviation("NUmopt") ) {
@@ -8125,6 +10196,9 @@ void BROWNIE::Read( NexusToken& token )
         else if( token.Abbreviation("RateTest") ) {
             HandleRateTest( token );
         }
+		else if( token.Abbreviation("ORderbytree") ) {
+			HandleOrderByTree( token );
+		}
         else if(token.Abbreviation("Taxset") ) {
             //errormsg = "Sorry, enter taxsets in the ASSUMPTIONS block";
             //throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
@@ -8136,22 +10210,30 @@ void BROWNIE::Read( NexusToken& token )
         else if( token.Abbreviation("Quit") ) {
             quit_now = true;
 			PrintCitations();
-            message = "\nPlease remember to send bug reports to bcomeara@ucdavis.edu.\n";
+            message = "\nPlease remember to send bug reports to brownie@brianomeara.info.\n";
             PrintMessage();
 
             break;
         }
         else
         {
-            SkippingCommand( token.GetToken() );
-            do {
-                token.GetNextToken();
-            } while( !token.AtEOF() && !token.Equals(";") );
-
-            if( token.AtEOF() ) {
-                errormsg = "Unexpected end of file encountered";
-                throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
-            }
+			if ((token.GetToken()).length()>1) {
+				SkippingCommand( token.GetToken() );
+				do {
+					token.GetNextToken();
+				} while( !token.AtEOF() && !token.Equals(";") );
+				
+				if( token.AtEOF() ) {
+					errormsg = "Unexpected end of file encountered";
+					throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+				}
+			}
+			else {
+				do {
+					token.GetNextToken();
+				} while( !token.AtEOF() && !token.Equals(";") );
+				break;
+			}
         }
     }
 }
@@ -8199,12 +10281,14 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
     trees = new TreesBlock(*taxa);
     assumptions = new AssumptionsBlock( *taxa );
     characters = new CharactersBlock( *taxa, *assumptions );
+	characters2 = new CharactersBlock2 (*taxa, *assumptions );
     Add( taxa );
     Add( trees );
     Add( assumptions );
     Add( characters );
+	Add( characters2 );
     Add( this );
-    cout<<endl<<endl<<endl<<"                               Brownie V2.0b7"<<endl;
+    cout<<endl<<endl<<endl<<"                               Brownie V2.1 PREVIEW"<<endl;
 	cout<<"                          Character evolution models,"<<endl;
 	cout<<"                             species delimitation,"<<endl; 
 	cout<<"                               and tree search"<<endl<<endl;
@@ -8214,11 +10298,14 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
     cout<<"                (modified to deal with continuous characters)"<<endl;
     cout<<"                        Rod Page's TreeLib & supertree,"<<endl;
     cout<<"                             Mike Sanderson's GTP,"<<endl;
-    cout<<"                        and the GNU Scientific Library (v1.9)"<<endl<<endl;
+    cout<<"                            and the GNU Scientific Library"<<endl<<endl;
     cout<<"                  Type \"help\" [no quotes] for a list of commands"<<endl;
     cout<<"                  and \"commandname ?\" for help for each command."<<endl<<endl;
     cout<<"                       Compiled on "<<__DATE__<<" at "<<__TIME__<<endl;
 	cout<<"                         Using GSL version "<<GSL_VERSION<<endl<<endl;
+	cout<<"          PLEASE CHECK WITH BRIAN O'MEARA BEFORE PUBLISHING WITH THIS VERSION"<<endl;
+	cout<<"              (not all methods have been peer-reviewed and published yet)"<<endl<<endl;
+	
     quit_now = false;
     if (inputfilegiven) {
         HandleExecuteCmdLine(fn);
@@ -8510,7 +10597,7 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
             //First do uppass to get Pagel like node numbers
             PreorderIterator <Node> m (t.GetRoot());
             Node *p = m.begin();
-            int count=1+(characters->GetNTax());
+            int count=1+(continuouscharacters->GetNTax());
             while (p)
             {
                 if(!(p->IsLeaf())) {
@@ -8533,10 +10620,10 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
             //exportf<<"#PAG"<<endl;
             //cout<<"Successfully saved\n";
             if (source==0) {
-                exportf<<characters->GetNTax()<<" "<< characters->GetNChar()<<"\n";
+                exportf<<continuouscharacters->GetNTax()<<" "<< continuouscharacters->GetNChar()<<"\n";
             }
             else if (source==1) {
-                int ntax=characters->GetNTax();
+                int ntax=continuouscharacters->GetNTax();
                 exportf<<ntax;
                 exportf<<" 1\n";
                 simcharmatrix=SimulateBrownian(trend,1,0);
@@ -8602,9 +10689,9 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
                     if (source==0) {
                         nxsstring currenttaxonlabel=(q->GetLabel()).c_str();
                         int taxonnumber=TaxonLabelToNumber( currenttaxonlabel );
-                        for (int charnumber=0; charnumber<(characters->GetNChar()); charnumber++) {
+                        for (int charnumber=0; charnumber<(continuouscharacters->GetNChar()); charnumber++) {
                             taxatoexport+=", ";
-                            taxatoexport+=characters->GetValue( taxonnumber, charnumber, true);
+                            taxatoexport+=continuouscharacters->GetValue( taxonnumber, charnumber, true);
                         }
                     }
                     else if (source==1) {
@@ -8906,6 +10993,17 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
         PrintMessage();
         return newcharmatrix;
     }
+	
+	double BROWNIE::browniesafe_gsl_sf_exp(double x) //Gets an exponential, but returns zero in case of underflow error
+	{
+		gsl_error_handler_t * old_handler =gsl_set_error_handler_off ();
+		double result=gsl_sf_exp(x);
+		if (gsl_isnan(result)) {
+			result=0; //had some error, generally underflow
+		}
+		gsl_set_error_handler (old_handler);
+		return result;
+	}
 
     void BROWNIE::PreOrderTraversal(NexusToken& token)
     {
@@ -8996,16 +11094,34 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
             {
                 cout << " [LEAF]";
                 if (q->IsMarked()) {
-                    cout <<" Node is marked  ModelCategorySize: ";
+                    cout <<" Node is marked\n\tModelCategorySize: ";
                 }
                 else {
-                    cout <<" Node not marked  ModelCategorySize: ";
+                    cout <<" Node not marked\n\tModelCategorySize: ";
                 }
-                vector<double> modelcatoutput;
-                modelcatoutput=q->GetModelCategory();
+                vector<double> modelcatoutput(q->GetModelCategory());
+				cout<<"( ";
+				for (int i=0;i<modelcatoutput.size();i++) {
+					cout<<modelcatoutput[i]<<" ";
+				}
+				cout<<") "<<endl;
+				vector<int> stateordervector(q->GetStateOrder()); 
+				cout<<"\tStateOrder: ( ";
+				for (int i=0;i<stateordervector.size();i++) {
+					cout<<stateordervector[i]<<" ";
+				}
+				cout<<") "<<endl;			
+				vector<double> statetimesvector(q->GetStateTimes());
+				cout<<"\tStateTimes: ( ";
+				for (int i=0;i<statetimesvector.size();i++) {
+					cout<<statetimesvector[i]<<" ";
+				}
+				cout<<") "<<endl;			
+				
+				
                 //gsl_vector modelcatoutput(q->GetModelCategory());
                 //cout<<modelcatoutput->size;
-                cout<<" length from root="<<q->GetPathLength();
+                cout<<"\t length from root="<<q->GetPathLength();
                 float pathlength=0;
                 a=q;
                 if(notfirstleaf) {
@@ -9166,25 +11282,39 @@ IntSet::const_iterator xi;
             Tree t = intrees.GetIthTree(chosentree-1);
             gsl_matrix* VCVmatrix=gsl_matrix_calloc(ntaxintaxset,ntaxintaxset);
             VCVmatrix=GetVCV(chosentaxset);
+			double 	TotalVCV=0.0;
             message+="With stem\n";
             for (int currentrow=0;currentrow<ntaxintaxset;currentrow++) {
                 for (int currentcol=0;currentcol<ntaxintaxset;currentcol++) {
                     message+=gsl_matrix_get(VCVmatrix,currentrow,currentcol);
+					TotalVCV+=gsl_matrix_get(VCVmatrix,currentrow,currentcol);
                     message+="\t";
                 }
                 message+="\n";
             }
             message+="\n";
+			message+="\nTotal of all entries in VCV with stem: ";
+			message+=TotalVCV;
+			message+="\nAverage of all entries in VCV with stem: ";
+			message+=TotalVCV/(ntaxintaxset*ntaxintaxset);
+			PrintMessage();
+			
             VCVmatrix=DeleteStem(GetVCV(chosentaxset));
+			TotalVCV=0.0;
             message+="Without stem\n";
             for (int currentrow=0;currentrow<ntaxintaxset;currentrow++) {
                 for (int currentcol=0;currentcol<ntaxintaxset;currentcol++) {
                     message+=gsl_matrix_get(VCVmatrix,currentrow,currentcol);
+					TotalVCV+=gsl_matrix_get(VCVmatrix,currentrow,currentcol);
                     message+="\t";
                 }
                 message+="\n";
             }
-            PrintMessage();
+			message+="\nTotal of all entries in VCV without stem: ";
+			message+=TotalVCV;
+			message+="\nAverage of all entries in VCV without stem: ";
+			message+=TotalVCV/(ntaxintaxset*ntaxintaxset);
+			PrintMessage();
 			gsl_matrix_free(VCVmatrix);
         }
         else {
@@ -9232,7 +11362,7 @@ IntSet::const_iterator xi;
 IntSet::const_iterator ri;
             for( ri = taxonlist.begin(); ri != taxonlist.end(); ri++ ) {
                 rowcount++;
-                gsl_vector_set(tipvector,rowcount,characters->GetValue( *ri, chosenchar-1 ,true));
+                gsl_vector_set(tipvector,rowcount,continuouscharacters->GetValue( *ri, chosenchar-1 ,true));
                 message = "  ";
                 message+=gsl_vector_get(tipvector,rowcount);
                 message+="\n";
@@ -9290,7 +11420,7 @@ IntSet::const_iterator xi;
 IntSet::const_iterator ri;
     for( ri = taxonlist.begin(); ri != taxonlist.end(); ri++ ) {
         rowcount++;
-        gsl_vector_set(tipvalues,rowcount,characters->GetValue( *ri, chosenchar-1, true));
+        gsl_vector_set(tipvalues,rowcount,continuouscharacters->GetValue( *ri, chosenchar-1, true));
     }
 
     return tipvalues;
@@ -9697,7 +11827,8 @@ gsl_matrix* BROWNIE::GetVCVwithTree(nxsstring chosentaxset,Tree t)
     return VCV;
 }
 
-
+//Returns for each taxon a table of start and stop times in the selected state. Assumes no more than maxstartstops/2 changes occur root to tip along tree per state
+//Actually lists stop, then corresponding start, then next stop, then next corresponding start
 gsl_matrix* BROWNIE::GetStartStopTimesforOneState(nxsstring chosentaxset, int selectedstate) {
 	
     nxsstring currenttaxonlabel;
@@ -9719,7 +11850,7 @@ gsl_matrix* BROWNIE::GetStartStopTimesforOneState(nxsstring chosentaxset, int se
         currenttaxonlabel=taxa->GetTaxonLabel(*xi);
     }
     Tree t = intrees.GetIthTree(chosentree-1);
-    gsl_matrix * StartStopTimes=gsl_matrix_calloc(ntaxintaxset,6*ntaxintaxset);
+    gsl_matrix * StartStopTimes=gsl_matrix_calloc(ntaxintaxset,maxstartstops*ntaxintaxset);
     gsl_matrix * VCV=gsl_matrix_calloc(ntaxintaxset,ntaxintaxset);
     VCV=DeleteStem(GetVCV(chosentaxset));
     double TotalTime=gsl_matrix_max (VCV);
@@ -9772,10 +11903,20 @@ gsl_matrix* BROWNIE::GetStartStopTimesforOneState(nxsstring chosentaxset, int se
               //  for (int position=0; position<staterestrictionvector.size(); position++) {
                   //  if (staterestrictionvector[position]==selectedstate) { //position is the called state, staterestrictionvector.at(position) gives the rate category to which that will be assigned
 				if (staterestrictionvector[(stateordervector[element])]==selectedstate) {
-					gsl_matrix_set(StartStopTimes,rowcount,colcount,TotalTime-edgelength+elapsedlength);
+					gsl_matrix_set(StartStopTimes,rowcount,colcount,fabs(TotalTime-pathlength+elapsedlength+segmentlength)); //do fabs because sometimes rounding error introduces -0.0...
 					colcount++;
-					gsl_matrix_set(StartStopTimes,rowcount,colcount,TotalTime-edgelength+elapsedlength+segmentlength);
+					gsl_matrix_set(StartStopTimes,rowcount,colcount,fabs(TotalTime-pathlength+elapsedlength)); 
 					colcount++;
+				}
+				if (colcount>=StartStopTimes->size2) {
+					errormsg= "Error: Too many appearances of state ";
+					errormsg+=selectedstate;
+					errormsg+=" on a path from the root to the tip of a tree\nUse \"model change=X\" and enter a larger number for changes than the current number (";
+					errormsg+=maxstartstops/2;
+					errormsg+=")";
+					cout<<"StartStopTimes matrix\n";
+					PrintMatrix(StartStopTimes);
+					throw XNexus (errormsg );
 				}
 				elapsedlength+=segmentlength;
                    // }
@@ -9905,7 +12046,7 @@ IntSet::const_iterator ci;
                 //		else {
                 for (int position=0;position<staterestrictionvector.size();position++) {
                     if (staterestrictionvector[position]==selectedmodel) { //position is the called state, staterestrictionvector.at(position) gives the rate category to which that state will be assigned
-                        pathlength+=modelcategoryvector[selectedmodel];
+                        pathlength+=modelcategoryvector[position];
                     }
                 }
                 }
@@ -9925,10 +12066,11 @@ IntSet::const_iterator ci;
                         mrcanotfound=false;
                         while(mrca->GetAnc()) {
                             vector<double> modelcategoryvector(mrca->GetModelCategory());
-                            pathlength+=modelcategoryvector[selectedmodel];
-                            if (debugmode) {
-                                cout<<" + "<<modelcategoryvector[selectedmodel];
-                            }
+							for (int position=0;position<staterestrictionvector.size();position++) {
+								if (staterestrictionvector[position]==selectedmodel) { //position is the called state, staterestrictionvector.at(position) gives the rate category to which that state will be assigned
+									pathlength+=modelcategoryvector[position];
+								}
+							}
                             mrca=mrca->GetAnc();
                         }
                     }
@@ -10131,10 +12273,9 @@ return VCV;
 
 void BROWNIE::PrintMatrix(gsl_matrix *VCV)
 {
-	int ntax=VCV->size1;
 	message="";
-    for (int r=0;r<ntax;r++) {
-        for (int c=0;c<ntax;c++) {
+    for (int r=0;r<VCV->size1;r++) {
+        for (int c=0;c<VCV->size2;c++) {
             message+=gsl_matrix_get(VCV,r,c);
 			message+="\t";
         }
@@ -10144,7 +12285,17 @@ void BROWNIE::PrintMatrix(gsl_matrix *VCV)
 	
 }
 
-
+void BROWNIE::PrintVector(gsl_vector *somevector)
+{
+	message="( ";
+    for (int r=0;r<somevector->size;r++) {
+			message+=gsl_vector_get(somevector,r);
+			message+=" ";
+    }
+	message+=")";
+    PrintMessage();
+	
+}
 
 
 //Use's Pagel Delta transform for continuous characters. First, run DeleteStem on input matrix
@@ -10213,18 +12364,22 @@ gsl_matrix* BROWNIE::AddTipVarianceVectorToRateTimesVCV(gsl_matrix * VCVorig,gsl
 
 void BROWNIE::HandleDebugOptimization( NexusToken& token )
 {
-	/////////////ADD STUFF FOR TREE LOOP, SAVING FILES, USING OU MODELS
+	bool justdohelp=false;
     ofstream tablef;
     nxsstring tablefname;
     bool tablef_open=false;
     bool name_provided=false;
-    nxsstring chosentaxset;
+    nxsstring chosentaxset=globalchosentaxset;
     bool treeloop=false;
-    bool adequateinput=false;
+	bool charloop=false;
+    bool adequateinput=true;
     int ntax=0;
     int nbest=1;
     int cstart=0;
     int cend=-1;
+	bool appending=true;
+	bool replacing=false;
+
     nxsstring treefilename="";
     bool definedfilename=false;
     nxsstring tmessage;
@@ -10233,7 +12388,7 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
         token.GetNextToken();
         if( token.Equals(";") ) {
             if (adequateinput==false) {
-                message="Insufficient input: type \"optimize ?\" for help";
+                message="Insufficient input: type \"continuous ?\" for help";
                 PrintMessage();
             }
             break;
@@ -10247,34 +12402,36 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
                 treeloop=true;
             }
         }
-        else if( token.Abbreviation("FIle") ) {
-            tablefname = GetFileName(token);
-            name_provided = true;
-            bool exists = FileExists( tablefname.c_str() );
-            bool userok = true;
-            if( exists && !UserSaysOk( "Ok to replace?", "Optimize output file specified already exists" ) )
-                userok = false;
-            if( userok ) {
-                tablef_open = true;
-                tablef.open( tablefname.c_str() );
-            }
-			
-            if( exists && userok ) {
-                message = "\nReplacing optimize output file ";
-                message += tablefname;
-            }
-            else if( userok ) {
-                message = "\nOptimize output file ";
-                message += tablefname;
-                message += " opened";
+        else if (token.Abbreviation("CHarloop") ) {
+            nxsstring yesnotreeloop=GetFileName(token);
+            if (yesnotreeloop[0] == 'n') {
+                charloop=false;
             }
             else {
-                errormsg = "Aborting the optimization so as not to overwrite the file.\n";
-                throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
-				
+                charloop=true;
             }
-            PrintMessage();
-			
+        }
+		else if( token.Abbreviation("Replace") ) {
+            nxsstring yesnoreplace=GetFileName(token);
+            if (yesnoreplace[0] == 'n') {
+                replacing=false;
+            }
+            else {
+                replacing=true;
+            }
+        }
+        else if( token.Abbreviation("APpend") ) {
+            nxsstring yesnoappend=GetFileName(token);
+            if (yesnoappend[0] == 'n') {
+                appending=false;
+            }
+            else {
+                appending=true;
+            }
+        }		
+        else if( token.Abbreviation("FIle") ) {
+            tablefname = GetFileName(token);
+            name_provided = true;			
         }
         else if( token.Abbreviation("Nbest") ) {
             
@@ -10304,18 +12461,25 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
 		
 		
         else if( token.Equals("?") ) {
-            message="Usage: Optimize taxset=<chosen taxset> treeloop=[yes|no]\n\n";
-            message+="Returns the likelihood and AIC under the current model.\n\n";
+            message="Usage: Continuous taxset=<chosen taxset> treeloop=[yes|no] append=[yes|no] replace=[yes|no]\n\n";
+            message+="Returns the likelihood and AICc under the current model.\n\n";
             message+="Available options:\n\n";
             message+="Keyword ---- Option type ------------------------ Current setting --";
-            message+="\nTaxset       <taxset name>                        *None";
+            message+="\nTaxset       <taxset name>                        *";
+			message+=globalchosentaxset;
             message+="\nTreeloop     No|Yes                               *No";
+            message+="\nCharloop     No|Yes                               *No";
             message+="\nFile         <file name>                          *None";
-            message+="\nNBest        <integer>                            *1";
-            message+="\nCStart       <integer>                            *none";
-            message+="\nCEnd         <integer>                            *none";
+			message+="\nAppend       No|Yes                               *Yes";
+			message+="\nReplace      No|Yes                               *No";
+
+			//Next three commands are for a project with Justen
+          //  message+="\nNBest        <integer>                            *1";
+          //  message+="\nCStart       <integer>                            *none";
+          //  message+="\nCEnd         <integer>                            *none";
             message+="\n                                                 *Option is nonpersistent\n\n";
             PrintMessage();
+			justdohelp=true;
         }
         else if( token.Abbreviation("TReefile") ) {
             treefilename=GetFileName(token);
@@ -10323,7 +12487,7 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
             break;
         }
         else if (token.Abbreviation("TAxset") ) {
-            adequateinput=true;
+            //adequateinput=true;
             if (trees->GetNumTrees()<1) {
                 errormsg = "Error: No valid trees are loaded.";
                 throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
@@ -10342,7 +12506,46 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
             }
         }
     }
-    if (adequateinput) {
+    if (adequateinput && !justdohelp) {
+		if( appending && replacing ) {
+			errormsg = "Cannot specify APPEND and REPLACE at the same time";
+			throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+		}		
+		bool exists = FileExists( tablefname.c_str() );
+		bool userok = true;
+		if (appending && name_provided) {
+			tablef_open = true;
+			tablef.open( tablefname.c_str(), ios::out | ios::app );
+			message = "\nAppending to continuous model output file (creating it if need be) ";
+			message += tablefname;
+			PrintMessage();
+		}
+		else if (name_provided) {
+			if( exists && !replacing && !UserSaysOk( "Ok to replace?", "Continuous model output file specified already exists" ) )
+				userok = false;
+			if( userok && !tablef_open) {
+				tablef_open = true;
+				tablef.open( tablefname.c_str() );
+			}
+			if( exists && userok ) {
+				message = "\nReplacing continuous model output file ";
+				message += tablefname;
+			}
+			else if( userok ) {
+				message = "\nContinuous model output file ";
+				message += tablefname;
+				message += " opened";
+			}
+			else {
+				errormsg = "Aborting the continuous optimization so as not to overwrite the file.\n";
+				throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+			}
+			PrintMessage();		
+		}
+
+		message="Now optimizing with taxset ";
+		message+=chosentaxset;
+		PrintMessage();
         int starttree, stoptree, startchar, stopchar;
         int originalchosentree=chosentree;
         int originalchosenchar=chosenchar;
@@ -10354,575 +12557,802 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
             starttree=chosentree;
             stoptree=chosentree;
         }
+		if (charloop) {
+            startchar=1;
+            stopchar=continuouscharacters->GetNChar();
+        }
+        else {
+            startchar=chosenchar;
+            stopchar=chosenchar;
+        }
+		if(ntax==0) {
+			IntSet& taxonlist = assumptions->GetTaxSet( chosentaxset );
+            if (taxonlist.empty()) {
+                errormsg= "Error: Taxset ";
+                errormsg+=chosentaxset.c_str();
+                errormsg+=" does not exist.\nYou can define it using the taxset command.";
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+			IntSet::const_iterator xi;
+            for( xi = taxonlist.begin(); xi != taxonlist.end(); xi++ ) {
+                ntax++;
+            }
+			
+		}
         for (chosentree=starttree;chosentree<=stoptree;chosentree++) {
-            if (tablef_open) {
-                tmessage="\n";
-                tmessage+=chosentree;
-                tablef<<tmessage;
-                message="Now working on tree number ";
-                message+=chosentree;
-                PrintMessage();
-            }
-            gsl_matrix * VCV=gsl_matrix_calloc(ntax,ntax);
-            gsl_vector * tips=gsl_vector_calloc(ntax);
-            gsl_vector * variance=gsl_vector_calloc(ntax);
-            tips=GetTipValues(chosentaxset,chosenchar);
-            if (tipvariancetype==2) {
-                variance=GetTipValues(chosentaxset,chosenchar+1);
-            }
-            if (chosenmodel<5 || chosenmodel==21 || chosenmodel==22) {
-                VCV=DeleteStem(GetVCV(chosentaxset));
-                OptimizationFn my_fn(VCV,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
-				
-                if (tipvariancetype==1 && chosenmodel==2) {
-                    gsl_vector *optimalrate=gsl_vector_calloc(5);
-					//gsl_vector_memcpy(optimalrate,my_fn.OptimizeRateWithOptimizedTipVariance());
-                    gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(2));
-                    message="\nOptimal rate = ";
-                    message+=gsl_vector_get(optimalrate,0);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,2);
-                    message+="\nTip variance = ";
-                    message+=gsl_vector_get(optimalrate,1);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,3);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalrate,4);
-                    if (tablef_open) {
-                        tmessage="\t";
-                        tmessage+=gsl_vector_get(optimalrate,0);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalrate,2);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalrate,1);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalrate,3);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalrate,4);
-                        tablef<<tmessage;
-                    }
-					gsl_vector_free(optimalrate);
+			double treeweight=trees->GetTreeWeight(chosentree-1);
+			nxsstring treename=trees->GetTreeName(chosentree-1);
+			for (chosenchar=startchar;chosenchar<=stopchar;chosenchar++) {
+				if (tablef_open) {
+				//	tmessage="\n";
+				//	tmessage+=chosentree;
+				//	tmessage+="\t";
+				//	tmessage+=chosenchar;
+					//tablef<<tmessage;
+					message="Now working on tree number ";
+					message+=chosentree;
+					message+=" char number ";
+					message+=chosenchar;
+					PrintMessage();
 				}
-                else if (chosenmodel==1) {
-                    gsl_vector *optimalrate=gsl_vector_calloc(3);
-					//gsl_vector_memcpy(optimalrate,my_fn.OptimizeRateWithGivenTipVariance());
-                    gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(1));
-                    message="\nOptimal rate = ";
-                    message+=gsl_vector_get(optimalrate,0);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,1);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalrate,2);
-					gsl_vector_free(optimalrate);
-                }
-                else if (chosenmodel==3) {
-                    gsl_vector *optimalrate=gsl_vector_calloc(7);
-                    gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(3));
-                    message="\nOptimal rate = ";
-                    message+=gsl_vector_get(optimalrate,0);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,3);
-                    message+="\nAncestral state = ";
-                    message+=gsl_vector_get(optimalrate,1);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,4);
-                    message+="\nd = ";
-                    message+=gsl_vector_get(optimalrate,2);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,5);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalrate,6);
-					gsl_vector_free(optimalrate);
+				gsl_matrix * VCV=gsl_matrix_calloc(ntax,ntax);
+				gsl_vector * tips=gsl_vector_calloc(ntax);
+				gsl_vector * variance=gsl_vector_calloc(ntax);
+				tips=GetTipValues(chosentaxset,chosenchar);
+				if (tipvariancetype==2) {
+					variance=GetTipValues(chosentaxset,chosenchar+1);
 				}
-                else if (chosenmodel==4) {
-                    gsl_vector *optimalrate=gsl_vector_calloc(7);
-                    gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(4));
-                    message="\nOptimal rate = ";
-                    message+=gsl_vector_get(optimalrate,0);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,3);
-                    message+="\nAncestral state = ";
-                    message+=gsl_vector_get(optimalrate,1);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,4);
-                    message+="\ng = ";
-                    message+=gsl_vector_get(optimalrate,2);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,5);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalrate,6);
-					gsl_vector_free(optimalrate);
-                }
-				else if (chosenmodel==21) {
-                    gsl_vector *optimalrate=gsl_vector_calloc(7);
-                    gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(21));
-                    message="\nOptimal rate = ";
-                    message+=gsl_vector_get(optimalrate,0);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,3);
-                    message+="\nAncestral state = ";
-                    message+=gsl_vector_get(optimalrate,1);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,4);
-                    message+="\ndelta = ";
-                    message+=gsl_vector_get(optimalrate,2);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,5);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalrate,6);
-					gsl_vector_free(optimalrate);
-				}
-				else if (chosenmodel==22) {
-                    gsl_vector *optimalrate=gsl_vector_calloc(7);
-                    gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(22));
-                    message="\nOptimal rate = ";
-                    message+=gsl_vector_get(optimalrate,0);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,3);
-                    message+="\nAncestral state = ";
-                    message+=gsl_vector_get(optimalrate,1);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,4);
-                    message+="\nlambda = ";
-                    message+=gsl_vector_get(optimalrate,2);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalrate,5);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalrate,6);
-					gsl_vector_free(optimalrate);
-				}
-                message+="\n\nNote that +/- reflects imprecision due to numerical optimization";
-                PrintMessage();
-            }
-            else { //we must have a model that deals with multiple VCVs
-                gsl_matrix * VCV0=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV1=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV2=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV3=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV4=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV5=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV6=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV7=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV8=gsl_matrix_calloc(ntax,ntax);
-                gsl_matrix * VCV9=gsl_matrix_calloc(ntax,ntax);
-                if (chosenmodel==5) {
-                    VCV0=GetVCVforOneModel(chosentaxset,0);
-                    //cout<<"VCV0 "<<gsl_matrix_get(VCV0,0,0);
-                    VCV1=GetVCVforOneModel(chosentaxset,1);
-                   // cout<<"VCV1 "<<gsl_matrix_get(VCV1,0,0);
-                    VCV2=GetVCVforOneModel(chosentaxset,2);
-                   // cout<<"VCV2 "<<gsl_matrix_get(VCV2,0,0);
-                    VCV3=GetVCVforOneModel(chosentaxset,3);
-                    VCV4=GetVCVforOneModel(chosentaxset,4);
-                    VCV5=GetVCVforOneModel(chosentaxset,5);
-                    VCV6=GetVCVforOneModel(chosentaxset,6);
-                    VCV7=GetVCVforOneModel(chosentaxset,7);
-                    VCV8=GetVCVforOneModel(chosentaxset,8);
-                    VCV9=GetVCVforOneModel(chosentaxset,9);
-                }
-                else if (chosenmodel==6) {
-                    VCV0=GetVCVforChangeNoChange(chosentaxset,false); //branches with no changes
-                    VCV1=GetVCVforChangeNoChange(chosentaxset,true); //branches with changes
-                }
-                if (debugmode) {
-                    cout<<"\n\nVCV0\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV0,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV1\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV1,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV2\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV2,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV3\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV3,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV4\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV4,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV5\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV5,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV6\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV6,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV7\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV7,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV8\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV8,rt,ct)<<"\t";
-                        }
-                    }
-                    cout<<"\n\nVCV9\n";
-                    for (int rt=0;rt<ntax;rt++) {
-                        cout<<"\n";
-                        for (int ct=0;ct<ntax;ct++) {
-                            cout<<gsl_matrix_get(VCV9,rt,ct)<<"\t";
-                        }
-                    }
+				if (chosenmodel<5 || chosenmodel==21 || chosenmodel==22) {
+					VCV=DeleteStem(GetVCV(chosentaxset));
+					OptimizationFn my_fn(VCV,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
 					
-                }
-                if (chosenmodel==5) {
-                    OptimizationFnMultiModel my_fn(VCV0,VCV1,VCV2,VCV3,VCV4,VCV5,VCV6,VCV7,VCV8,VCV9,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
-                    gsl_vector *optimalvalues=gsl_vector_calloc(24);
-                    gsl_vector_memcpy(optimalvalues,my_fn.GeneralOptimization(5));
-					message="\nlnL = ";
-					message+=gsl_vector_get(optimalvalues,0);
-					message+="\nAIC = ";
-					message+=2*(gsl_vector_get(optimalvalues,0) + gsl_vector_get(optimalvalues,1));
-					message+="\nAICc = ";
-					message+=(2*gsl_vector_get(optimalvalues,0))+2*gsl_vector_get(optimalvalues,1)+2*gsl_vector_get(optimalvalues,1)*(gsl_vector_get(optimalvalues,1)+1)/(ntax-gsl_vector_get(optimalvalues,1)-1);
-                    message+="\nAncestral state = ";
-                    message+=gsl_vector_get(optimalvalues,2);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalvalues,13);
-                    int np=int(gsl_vector_get(optimalvalues,1));
-                    for (int modelstate=0;modelstate<(np-1);modelstate++) {
-                        message+="\nRate in state ";
-                        message+=modelstate;
-                        message+=" = ";
-                        message+=gsl_vector_get(optimalvalues,3+modelstate);
-                        message+=" +/- ";
-                        message+=gsl_vector_get(optimalvalues,14+modelstate);
-                    }
-                    PrintMessage();
-					gsl_vector_free(optimalvalues);
+					if (tipvariancetype==1 && chosenmodel==2) {
+						gsl_vector *optimalrate=gsl_vector_calloc(5);
+					//gsl_vector_memcpy(optimalrate,my_fn.OptimizeRateWithOptimizedTipVariance());
+						gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(2));
+						optimalvaluescontinuouschar=gsl_vector_calloc(3);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("tip variance");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalrate,0));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalrate,1));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalrate,4));
+						message="\nOptimal rate = ";
+						message+=gsl_vector_get(optimalrate,0);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,2);
+						message+="\nTip variance = ";
+						message+=gsl_vector_get(optimalrate,1);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,3);
+						message+="\n-lnL = ";
+						message+=gsl_vector_get(optimalrate,4);
+						if (tablef_open) {
+							tmessage="\t";
+							tmessage+=gsl_vector_get(optimalrate,0);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalrate,2);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalrate,1);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalrate,3);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalrate,4);
+							tablef<<tmessage;
+						}
+						gsl_vector_free(optimalrate);
+					}
+					else if (chosenmodel==1) {
+						gsl_vector *optimalrate=gsl_vector_calloc(3);
+					//gsl_vector_memcpy(optimalrate,my_fn.OptimizeRateWithGivenTipVariance());
+						gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(1));
+						optimalvaluescontinuouschar=gsl_vector_calloc(2);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalrate,0));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalrate,2));
+						message+="\n-lnL = ";
+						message+=gsl_vector_get(optimalrate,2);
+						message+="\nAIC = ";
+						message+=2*(1.0*gsl_vector_get(optimalrate,2) + 2);
+						message+="\nAICc = ";
+						message+=(2*1.0*gsl_vector_get(optimalrate,2))+4.0+12.0/(ntax-3);
+						tips=GetTipValues(chosentaxset,chosenchar);
+						message+="\nAncestral state = ";
+						gsl_matrix *currentVCVmat=gsl_matrix_calloc(ntax,ntax);
+						currentVCVmat=DeleteStem(GetVCV(chosentaxset));
+						gsl_vector *tips=gsl_vector_calloc(ntax);
+						tips=GetTipValues(chosentaxset,chosenchar);
+						double ancstate=GetAncestralState(currentVCVmat,tips);	
+						message+=ancstate;
+						gsl_matrix_free(currentVCVmat);
+						gsl_vector_free(tips);
+						message+="\nOptimal rate = ";
+						message+=gsl_vector_get(optimalrate,0);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,1);
+						if (tablef_open) {
+							tmessage="Tree\tTree weight\tTree name\tChar\tModel\t-LnL\tAIC\tAICc\tAncState\tBMrate\n";
+							tmessage+=chosentree;
+							tmessage+="\t";
+							tmessage+=treeweight;
+							tmessage+="\t";
+							tmessage+=treename;
+							tmessage+="\t";
+							tmessage+=chosenchar;
+							tmessage+="\tBM1\t";
+							tmessage+=gsl_vector_get(optimalrate,2);
+							tmessage+="\t";
+							tmessage+=2*(1.0*gsl_vector_get(optimalrate,2) + 2);
+							tmessage+="\t";
+							tmessage+=(2*1.0*gsl_vector_get(optimalrate,2))+2*2+2*2.0*(2+1)/(ntax-2-1);
+							tmessage+="\t";
+							tmessage+=ancstate;
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalrate,0);
+							tmessage+="\n";
+							tablef<<tmessage;
+						}
+						gsl_vector_free(optimalrate);
+					}
+					else if (chosenmodel==3) {
+						gsl_vector *optimalrate=gsl_vector_calloc(7);
+						gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(3));
+						optimalvaluescontinuouschar=gsl_vector_calloc(4);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("ancestral state");
+						//optimalvalueslabels.push_back("d");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalrate,0));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalrate,1));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalrate,2));
+						gsl_vector_set(optimalvaluescontinuouschar,3,gsl_vector_get(optimalrate,6));
+						message="\nOptimal rate = ";
+						message+=gsl_vector_get(optimalrate,0);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,3);
+						message+="\nAncestral state = ";
+						message+=gsl_vector_get(optimalrate,1);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,4);
+						message+="\nd = ";
+						message+=gsl_vector_get(optimalrate,2);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,5);
+						message+="\n-lnL = ";
+						message+=gsl_vector_get(optimalrate,6);
+						gsl_vector_free(optimalrate);
+					}
+					else if (chosenmodel==4) {
+						gsl_vector *optimalrate=gsl_vector_calloc(7);
+						gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(4));
+						optimalvaluescontinuouschar=gsl_vector_calloc(4);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("ancestral state");
+						//optimalvalueslabels.push_back("g");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalrate,0));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalrate,1));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalrate,2));
+						gsl_vector_set(optimalvaluescontinuouschar,3,gsl_vector_get(optimalrate,6));
+						message="\nOptimal rate = ";
+						message+=gsl_vector_get(optimalrate,0);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,3);
+						message+="\nAncestral state = ";
+						message+=gsl_vector_get(optimalrate,1);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,4);
+						message+="\ng = ";
+						message+=gsl_vector_get(optimalrate,2);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,5);
+						message+="\n-lnL = ";
+						message+=gsl_vector_get(optimalrate,6);
+						gsl_vector_free(optimalrate);
+					}
+					else if (chosenmodel==21) {
+						gsl_vector *optimalrate=gsl_vector_calloc(7);
+						gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(21));
+						optimalvaluescontinuouschar=gsl_vector_calloc(4);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("ancestral state");
+						//optimalvalueslabels.push_back("delta");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalrate,0));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalrate,1));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalrate,2));
+						gsl_vector_set(optimalvaluescontinuouschar,3,gsl_vector_get(optimalrate,6));
+						message="\nOptimal rate = ";
+						message+=gsl_vector_get(optimalrate,0);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,3);
+						message+="\nAncestral state = ";
+						message+=gsl_vector_get(optimalrate,1);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,4);
+						message+="\ndelta = ";
+						message+=gsl_vector_get(optimalrate,2);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,5);
+						message+="\n-lnL = ";
+						message+=gsl_vector_get(optimalrate,6);
+						gsl_vector_free(optimalrate);
+					}
+					else if (chosenmodel==22) {
+						gsl_vector *optimalrate=gsl_vector_calloc(7);
+						gsl_vector_memcpy(optimalrate,my_fn.GeneralOptimization(22));
+						optimalvaluescontinuouschar=gsl_vector_calloc(4);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("ancestral state");
+						//optimalvalueslabels.push_back("lambda");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalrate,0));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalrate,1));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalrate,2));
+						gsl_vector_set(optimalvaluescontinuouschar,3,gsl_vector_get(optimalrate,6));
+						message="\nOptimal rate = ";
+						message+=gsl_vector_get(optimalrate,0);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,3);
+						message+="\nAncestral state = ";
+						message+=gsl_vector_get(optimalrate,1);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,4);
+						message+="\nlambda = ";
+						message+=gsl_vector_get(optimalrate,2);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalrate,5);
+						message+="\n-lnL = ";
+						message+=gsl_vector_get(optimalrate,6);
+						gsl_vector_free(optimalrate);
+					}
+					message+="\n\nNote that +/- reflects imprecision due to numerical optimization";
+					PrintMessage();
 				}
-                if (chosenmodel==12) {
-                    VCV0=DeleteStem(GetVCV(chosentaxset));
-                    gsl_matrix_free (VCV1);
-                    VCV1=gsl_matrix_calloc(ntax,6*ntax); //assumes that states change fewer than three times per branch on pectinate tree
-                    VCV1=GetStartStopTimesforOneState(chosentaxset,0);
-                    gsl_matrix_free (VCV2);
-                    VCV2=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV2=GetStartStopTimesforOneState(chosentaxset,1);
-                    gsl_matrix_free (VCV3);
-                    VCV3=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV3=GetStartStopTimesforOneState(chosentaxset,2);
-                    gsl_matrix_free (VCV4);
-                    VCV4=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV4=GetStartStopTimesforOneState(chosentaxset,3);
-                    gsl_matrix_free (VCV5);
-                    VCV5=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV5=GetStartStopTimesforOneState(chosentaxset,4);
-                    gsl_matrix_free (VCV6);
-                    VCV6=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV6=GetStartStopTimesforOneState(chosentaxset,5);
-                    gsl_matrix_free (VCV7);
-                    VCV7=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV7=GetStartStopTimesforOneState(chosentaxset,6);
-                    gsl_matrix_free (VCV8);
-                    VCV8=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV8=GetStartStopTimesforOneState(chosentaxset,7);
-                    gsl_matrix_free (VCV9);
-                    VCV9=gsl_matrix_calloc(ntax,6*ntax);
-                    VCV9=GetStartStopTimesforOneState(chosentaxset,8);
-                    OptimizationFnMultiModel my_fn(VCV0,VCV1,VCV2,VCV3,VCV4,VCV5,VCV6,VCV7,VCV8,VCV9,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
-                    gsl_vector *optimalvalues=gsl_vector_calloc(28);
-                    gsl_vector_memcpy(optimalvalues,my_fn.GeneralOptimization(12));
-                    message="\nlnL = ";
-                    message+=gsl_vector_get(optimalvalues,0);
-                    message+="\nBM rate = ";
-                    message+=gsl_vector_get(optimalvalues,2);
+				else { //we must have a model that deals with multiple VCVs
+					gsl_matrix * VCV0=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV1=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV2=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV3=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV4=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV5=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV6=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV7=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV8=gsl_matrix_calloc(ntax,ntax);
+					gsl_matrix * VCV9=gsl_matrix_calloc(ntax,ntax);
+					if (chosenmodel==5) {
+						VCV0=GetVCVforOneModel(chosentaxset,0);
+                    //cout<<"VCV0 "<<gsl_matrix_get(VCV0,0,0);
+						VCV1=GetVCVforOneModel(chosentaxset,1);
+                   // cout<<"VCV1 "<<gsl_matrix_get(VCV1,0,0);
+						VCV2=GetVCVforOneModel(chosentaxset,2);
+                   // cout<<"VCV2 "<<gsl_matrix_get(VCV2,0,0);
+						VCV3=GetVCVforOneModel(chosentaxset,3);
+						VCV4=GetVCVforOneModel(chosentaxset,4);
+						VCV5=GetVCVforOneModel(chosentaxset,5);
+						VCV6=GetVCVforOneModel(chosentaxset,6);
+						VCV7=GetVCVforOneModel(chosentaxset,7);
+						VCV8=GetVCVforOneModel(chosentaxset,8);
+						VCV9=GetVCVforOneModel(chosentaxset,9);
+					}
+					else if (chosenmodel==6) {
+						VCV0=GetVCVforChangeNoChange(chosentaxset,false); //branches with no changes
+						VCV1=GetVCVforChangeNoChange(chosentaxset,true); //branches with changes
+					}
+					if (debugmode) {
+						cout<<"\n\nVCV0\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV0,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV1\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV1,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV2\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV2,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV3\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV3,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV4\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV4,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV5\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV5,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV6\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV6,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV7\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV7,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV8\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV8,rt,ct)<<"\t";
+							}
+						}
+						cout<<"\n\nVCV9\n";
+						for (int rt=0;rt<ntax;rt++) {
+							cout<<"\n";
+							for (int ct=0;ct<ntax;ct++) {
+								cout<<gsl_matrix_get(VCV9,rt,ct)<<"\t";
+							}
+						}
+						
+					}
+					if (chosenmodel==5) {
+						OptimizationFnMultiModel my_fn(VCV0,VCV1,VCV2,VCV3,VCV4,VCV5,VCV6,VCV7,VCV8,VCV9,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
+						gsl_vector *optimalvalues=gsl_vector_calloc(24);
+						gsl_vector_memcpy(optimalvalues,my_fn.GeneralOptimization(5));
+						int np=int(gsl_vector_get(optimalvalues,1));
+						optimalvaluescontinuouschar=gsl_vector_calloc(np+1);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("ancestral state");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalvalues,2));
+						for (int modelstate=0;modelstate<(np-1);modelstate++) {
+							gsl_vector_set(optimalvaluescontinuouschar,modelstate+1,gsl_vector_get(optimalvalues,3+modelstate));
+							nxsstring labelstring="rate";
+							labelstring+=modelstate;
+							//optimalvalueslabels.push_back(labelstring);
+						}
+						gsl_vector_set(optimalvaluescontinuouschar,np,gsl_vector_get(optimalvalues,0));
+						//optimalvalueslabels.push_back("lnL");
+						message="\n-lnL = ";
+						message+=gsl_vector_get(optimalvalues,0);
+						message+="\nAIC = ";
+						message+=2*(1.0*gsl_vector_get(optimalvalues,0) + gsl_vector_get(optimalvalues,1));
+						message+="\nAICc = ";
+						message+=(2*1.0*gsl_vector_get(optimalvalues,0))+2*gsl_vector_get(optimalvalues,1)+2.0*gsl_vector_get(optimalvalues,1)*(gsl_vector_get(optimalvalues,1)+1)/(ntax-gsl_vector_get(optimalvalues,1)-1);
+						message+="\nAncestral state = ";
+						message+=gsl_vector_get(optimalvalues,2);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalvalues,13);
+						tmessage="Tree\tTree weight\tTree name\tChar\tModel\t-LnL\tAIC\tAICc\tAncState";
+						for (int modelstate=0;modelstate<(np-1);modelstate++) {
+							message+="\nRate in state ";
+							message+=modelstate;
+							tmessage+="\tRate_in_state_";
+							tmessage+=modelstate;
+							message+=" = ";
+							message+=gsl_vector_get(optimalvalues,3+modelstate);
+							message+=" +/- ";
+							message+=gsl_vector_get(optimalvalues,14+modelstate);
+						}
+						if (tablef_open) {
+							tmessage+="\n";
+							tmessage+=chosentree;
+							tmessage+="\t";
+							tmessage+=treeweight;
+							tmessage+="\t";
+							tmessage+=treename;
+							tmessage+="\t";
+							tmessage+=chosenchar;
+							tmessage+="\tBMS\t";
+							tmessage+=gsl_vector_get(optimalvalues,0);
+							tmessage+="\t";
+							tmessage+=2*(1.0*gsl_vector_get(optimalvalues,0) + gsl_vector_get(optimalvalues,1));
+							tmessage+="\t";
+							tmessage+=(2*1.0*gsl_vector_get(optimalvalues,0))+2*gsl_vector_get(optimalvalues,1)+2.0*gsl_vector_get(optimalvalues,1)*(gsl_vector_get(optimalvalues,1)+1)/(ntax-gsl_vector_get(optimalvalues,1)-1);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalvalues,2);
+							for (int modelstate=0;modelstate<(np-1);modelstate++) {
+								tmessage+="\t";
+								tmessage+=gsl_vector_get(optimalvalues,3+modelstate);
+							}
+							tmessage+="\n";
+							tablef<<tmessage;
+						}
+						
+						PrintMessage();
+						gsl_vector_free(optimalvalues);
+					}
+					if (chosenmodel==12) {
+						VCV0=DeleteStem(GetVCV(chosentaxset));
+						gsl_matrix_free (VCV1);
+						VCV1=gsl_matrix_calloc(ntax,maxstartstops*ntax); //assumes that states change fewer than three times per branch on pectinate tree
+						VCV1=GetStartStopTimesforOneState(chosentaxset,0);
+						gsl_matrix_free (VCV2);
+						VCV2=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV2=GetStartStopTimesforOneState(chosentaxset,1);
+						gsl_matrix_free (VCV3);
+						VCV3=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV3=GetStartStopTimesforOneState(chosentaxset,2);
+						gsl_matrix_free (VCV4);
+						VCV4=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV4=GetStartStopTimesforOneState(chosentaxset,3);
+						gsl_matrix_free (VCV5);
+						VCV5=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV5=GetStartStopTimesforOneState(chosentaxset,4);
+						gsl_matrix_free (VCV6);
+						VCV6=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV6=GetStartStopTimesforOneState(chosentaxset,5);
+						gsl_matrix_free (VCV7);
+						VCV7=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV7=GetStartStopTimesforOneState(chosentaxset,6);
+						gsl_matrix_free (VCV8);
+						VCV8=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV8=GetStartStopTimesforOneState(chosentaxset,7);
+						gsl_matrix_free (VCV9);
+						VCV9=gsl_matrix_calloc(ntax,maxstartstops*ntax);
+						VCV9=GetStartStopTimesforOneState(chosentaxset,8);
+						OptimizationFnMultiModel my_fn(VCV0,VCV1,VCV2,VCV3,VCV4,VCV5,VCV6,VCV7,VCV8,VCV9,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
+						gsl_vector *optimalvalues=gsl_vector_calloc(28);
+						gsl_vector_memcpy(optimalvalues,my_fn.GeneralOptimization(12));
+						int np=int(gsl_vector_get(optimalvalues,1));
+						optimalvaluescontinuouschar=gsl_vector_calloc(np+1);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("rate");
+						//optimalvalueslabels.push_back("attraction");
+						//optimalvalueslabels.push_back("ancestral state");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalvalues,2));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalvalues,3));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalvalues,4));
+						for (int modelstate=0;modelstate<(np-3);modelstate++) {
+							gsl_vector_set(optimalvaluescontinuouschar,modelstate+3,gsl_vector_get(optimalvalues,5+modelstate));
+							nxsstring labelstring="optimum_state";
+							labelstring+=modelstate;
+							//optimalvalueslabels.push_back(labelstring);
+						}
+						gsl_vector_set(optimalvaluescontinuouschar,np,gsl_vector_get(optimalvalues,0));
+						//optimalvalueslabels.push_back("lnL");
+						message="\n-lnL = ";
+						message+=gsl_vector_get(optimalvalues,0);
+						message+="\nAIC = ";
+						message+=2*(1.0*gsl_vector_get(optimalvalues,0) + gsl_vector_get(optimalvalues,1));
+						message+="\nAICc = ";
+						message+=(2*1.0*gsl_vector_get(optimalvalues,0))+2*gsl_vector_get(optimalvalues,1)+2.0*gsl_vector_get(optimalvalues,1)*(gsl_vector_get(optimalvalues,1)+1)/(ntax-gsl_vector_get(optimalvalues,1)-1);						
+						message+="\nBM rate (sigma-squared) = ";
+						message+=gsl_vector_get(optimalvalues,2);
                    // message+=" +/- ";
                     //message+=gsl_vector_get(optimalvalues,15);
-                    message+="\nOU attraction = ";
-                    message+=gsl_vector_get(optimalvalues,3);
+						message+="\nOU attraction = ";
+						message+=gsl_vector_get(optimalvalues,3);
+						if (gsl_vector_get(optimalvalues,3)<=0.0015) {
+							message+="  *Warning: program minimum value is 0.001! Try simple Brownian motion, since there is so little attraction.";
+						}
+						if (gsl_vector_get(optimalvalues,3)>=19.9) {
+							message+="  *Warning: program maximum value is 20! Do you have variation in the terminals?";
+						}
+						
 					//message+=" +/- ";
 					//message+=gsl_vector_get(optimalvalues,16);
-                    message+="\nRoot state = ";
-                    message+=gsl_vector_get(optimalvalues,4);
+						message+="\nRoot state = ";
+						message+=gsl_vector_get(optimalvalues,4);
 					//message+=" +/- ";
 					//message+=gsl_vector_get(optimalvalues,15);
-                    int np=int(gsl_vector_get(optimalvalues,1));
-                    for (int modelstate=0;modelstate<(np-3);modelstate++) {
-                        message+="\nMean value in state ";
-                        message+=modelstate;
-                        message+=" = ";
-                        message+=gsl_vector_get(optimalvalues,5+modelstate);
+						for (int modelstate=0;modelstate<(np-3);modelstate++) {
+							message+="\nMean value in state ";
+							message+=modelstate;
+							message+=" = ";
+							message+=gsl_vector_get(optimalvalues,5+modelstate);
                         //message+=" +/- ";
                         //message+=gsl_vector_get(optimalvalues,18+modelstate);
-                    }
-                    PrintMessage();
-					gsl_matrix_free(VCV1);
-					gsl_matrix_free(VCV2);
-					gsl_matrix_free(VCV3);
-					gsl_matrix_free(VCV4);
-					gsl_matrix_free(VCV5);
-					gsl_matrix_free(VCV6);
-					gsl_matrix_free(VCV7);
-					gsl_matrix_free(VCV8);
-					gsl_matrix_free(VCV9);
-					
-					
-					gsl_vector_free(optimalvalues);
-				}
-                if (chosenmodel==14) {
-                    Tree t = intrees.GetIthTree(chosentree-1);
-                    double MaxRootTipLength=t.GetMaxPathLength();
-                    if (debugmode) {
-                        cout<<"MaxRootTipLength = "<<MaxRootTipLength<<endl;
-                    }
-                }
-                if (chosenmodel==16 || chosenmodel==17) {
-                    if (chosenmodel==16) {
-                        treefilename="OutputTreesBMAN.nex";
-                    }
-                    else {
-                        treefilename="OutputTreesBMAO.nex";
-                    }
-                    ofstream outtreef;
-                    outtreef.open(treefilename.c_str());
-                    outtreef<<"#nexus\nbegin trees;";
-                    
-                    gsl_combination *c;
-                    size_t combinationsize;
-                    //int ntax=(intrees.GetIthTree(0)).GetNumLeaves();
-                    int totalnumberofcombinations=0;
-                    for (combinationsize=0;combinationsize<(2*ntax-2);combinationsize++) {
-                        totalnumberofcombinations+=int(gsl_sf_choose ((2*ntax-2), combinationsize));
-                    }
-                    message="There are ";
-                    message+=totalnumberofcombinations;
-                    message+=" total combinations to try.";
-                    PrintMessage();
-                    ProgressBar(totalnumberofcombinations);
-                    int combinationcount=0;
-                    for (combinationsize=0;combinationsize<(2*ntax-2);combinationsize++) { //we want to try all possible assignments of zero, except assigning all branches to zero
-                        c=gsl_combination_calloc((2*ntax-2),combinationsize);
-                        do
-                        {
-                            combinationcount++;
-                            vector<int> nodestomakezero;
-                            for (int i=0;i<combinationsize;i++) {
-                                nodestomakezero.push_back(int(gsl_combination_get(c,i)));
-                            }
-                            nodestomakezero.push_back(-1); //just to keep things from going awry when we're done with all the nodes
-                            int vectorstep=0;
-                            int nodecount=0;
-                            Tree t=intrees.GetIthTree(chosentree-1);
-                            t.SetEdgeLengths(true);
-                            PreorderIterator <Node> n (t.GetRoot());
-                            NodePtr RootNode=t.GetRoot();
-                            NodePtr currentnode = n.begin();
-                            while (currentnode) {
-                                if (currentnode!=RootNode) {
-                                    if (nodecount==nodestomakezero[vectorstep]) {
-                                        currentnode->SetEdgeLength(0.0);
-                                        vectorstep++;
-                                    }
-                                    else if (chosenmodel==17) {
-                                        currentnode->SetEdgeLength(1.0);
-                                    }
-                                    nodecount++; //don't iterate on the root node, as it's not in the combination
-                                }
-                                currentnode=n.next();    
-                            }
-                            gsl_matrix *currentVCVmat=gsl_matrix_calloc(ntax,ntax);
-                            currentVCVmat=DeleteStem(GetVCVwithTree(chosentaxset,t));
-                            gsl_vector *tips=gsl_vector_calloc(ntax);
-                            gsl_vector *tipsresid=gsl_vector_calloc(ntax);
-                            double ancstate;
-                            double rate;
-                            double likelihood;
-                            tips=GetTipValues(chosentaxset,chosenchar);
-                            ancstate=GetAncestralState(currentVCVmat,tips);
-                            tipsresid=GetTipResiduals(tips,ancstate);
-                            rate=EstimateRate(currentVCVmat,tipsresid);
-                            gsl_matrix *RateTimesVCVfortest=gsl_matrix_calloc(currentVCVmat->size1,currentVCVmat->size2);
-                            gsl_matrix_memcpy(RateTimesVCVfortest, currentVCVmat);
-                            gsl_matrix_scale(RateTimesVCVfortest,rate);
-                            likelihood=GetLScore(currentVCVmat,tipsresid,rate);
-                            nxsstring rootlabel="lnL_";
-                            rootlabel+=likelihood;
-                            RootNode->SetLabel(rootlabel);
-                            t.SetInternalLabels(true);
-                            t.Update();
-                           // outtreef<<"gethasedgelengths = "<<t.GetHasEdgeLengths()<<endl;
-                            char outputstring[14];
-                            sprintf(outputstring,"%14.6f",likelihood);
-                            //outtreef<<endl<<"gethasedgelengths = "<<t.GetHasEdgeLengths();
-							
-                            outtreef<<"\ntree tree"<<combinationcount<<" = [likelihood = "<<outputstring<<" ] ";
-                            NewickTreeWriter tw (&t);
-                            tw.SetStream (&outtreef);
-                            tw.SetWriteEdgeLengths(true);
-                            tw.Write();
-                            ProgressBar(0);
-							gsl_matrix_free(currentVCVmat);
-							gsl_vector_free(tips);
-							gsl_vector_free(tipsresid);
-							gsl_matrix_free(RateTimesVCVfortest);
-							
 						}
-                        while (gsl_combination_next(c) == GSL_SUCCESS);
-                        gsl_combination_free (c);
-                    }
-                    outtreef<<"\nend;";
-                    outtreef.close();
-                }
-				if (chosenmodel==18 || chosenmodel==19) {
-                    
+						PrintMessage();
+						if (tablef_open) {
+							tmessage="Tree\tTree weight\tTree name\tChar\tModel\t-LnL\tAIC\tAICc\tAncState\tBMrate\tAttraction";
+							for (int modelstate=0;modelstate<(np-3);modelstate++) {
+								tmessage+="\tMean_in_state_";
+								tmessage+=modelstate;
+							}
+							tmessage+="\n";
+							tmessage+=chosentree;
+							tmessage+="\t";
+							tmessage+=treeweight;
+							tmessage+="\t";
+							tmessage+=treename;
+							tmessage+="\t";
+							tmessage+=chosenchar;
+							if ((np-3)==1) {
+								tmessage+="\tOU1\t";
+							}
+							else {
+								tmessage+="\tOUSM\t";
+							}
+							tmessage+=gsl_vector_get(optimalvalues,0);
+							tmessage+="\t";
+							tmessage+=2*(1.0*gsl_vector_get(optimalvalues,0) + gsl_vector_get(optimalvalues,1));
+							tmessage+="\t";
+							tmessage+=(2*1.0*gsl_vector_get(optimalvalues,0))+2*gsl_vector_get(optimalvalues,1)+2.0*gsl_vector_get(optimalvalues,1)*(gsl_vector_get(optimalvalues,1)+1)/(ntax-gsl_vector_get(optimalvalues,1)-1);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalvalues,4);
+							tmessage+="\t";							
+							tmessage+=gsl_vector_get(optimalvalues,2);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalvalues,3);
+							for (int modelstate=0;modelstate<(np-3);modelstate++) {
+								tmessage+="\t";
+								tmessage+=gsl_vector_get(optimalvalues,5+modelstate);
+							}
+							tmessage+="\n";
+							tablef<<tmessage;
+						}
+						
+						
+						/*		gsl_matrix_free(VCV1);
+						gsl_matrix_free(VCV2);
+						gsl_matrix_free(VCV3);
+						gsl_matrix_free(VCV4);
+						gsl_matrix_free(VCV5);
+						gsl_matrix_free(VCV6);
+						gsl_matrix_free(VCV7);
+						gsl_matrix_free(VCV8);
+						gsl_matrix_free(VCV9);*/
+						//cout<<"Vector of all output:\n";
+						//PrintVector(optimalvalues);
+						
+						gsl_vector_free(optimalvalues);
+					}
+					if (chosenmodel==14) {
+						Tree t = intrees.GetIthTree(chosentree-1);
+						double MaxRootTipLength=t.GetMaxPathLength();
+						if (debugmode) {
+							cout<<"MaxRootTipLength = "<<MaxRootTipLength<<endl;
+						}
+					}
+					if (chosenmodel==16 || chosenmodel==17) {
+						if (chosenmodel==16) {
+							treefilename="OutputTreesBMAN.nex";
+						}
+						else {
+							treefilename="OutputTreesBMAO.nex";
+						}
+						ofstream outtreef;
+						outtreef.open(treefilename.c_str());
+						outtreef<<"#nexus\nbegin trees;";
+						
+						gsl_combination *c;
+						size_t combinationsize;
+                    //int ntax=(intrees.GetIthTree(0)).GetNumLeaves();
+						int totalnumberofcombinations=0;
+						for (combinationsize=0;combinationsize<(2*ntax-2);combinationsize++) {
+							totalnumberofcombinations+=int(gsl_sf_choose ((2*ntax-2), combinationsize));
+						}
+						message="There are ";
+						message+=totalnumberofcombinations;
+						message+=" total combinations to try.";
+						PrintMessage();
+						ProgressBar(totalnumberofcombinations);
+						int combinationcount=0;
+						for (combinationsize=0;combinationsize<(2*ntax-2);combinationsize++) { //we want to try all possible assignments of zero, except assigning all branches to zero
+							c=gsl_combination_calloc((2*ntax-2),combinationsize);
+							do
+							{
+								combinationcount++;
+								vector<int> nodestomakezero;
+								for (int i=0;i<combinationsize;i++) {
+									nodestomakezero.push_back(int(gsl_combination_get(c,i)));
+								}
+								nodestomakezero.push_back(-1); //just to keep things from going awry when we're done with all the nodes
+								int vectorstep=0;
+								int nodecount=0;
+								Tree t=intrees.GetIthTree(chosentree-1);
+								t.SetEdgeLengths(true);
+								PreorderIterator <Node> n (t.GetRoot());
+								NodePtr RootNode=t.GetRoot();
+								NodePtr currentnode = n.begin();
+								while (currentnode) {
+									if (currentnode!=RootNode) {
+										if (nodecount==nodestomakezero[vectorstep]) {
+											currentnode->SetEdgeLength(0.0);
+											vectorstep++;
+										}
+										else if (chosenmodel==17) {
+											currentnode->SetEdgeLength(1.0);
+										}
+										nodecount++; //don't iterate on the root node, as it's not in the combination
+									}
+									currentnode=n.next();    
+								}
+								gsl_matrix *currentVCVmat=gsl_matrix_calloc(ntax,ntax);
+								currentVCVmat=DeleteStem(GetVCVwithTree(chosentaxset,t));
+								gsl_vector *tips=gsl_vector_calloc(ntax);
+								gsl_vector *tipsresid=gsl_vector_calloc(ntax);
+								double ancstate;
+								double rate;
+								double likelihood;
+								tips=GetTipValues(chosentaxset,chosenchar);
+								ancstate=GetAncestralState(currentVCVmat,tips);
+								tipsresid=GetTipResiduals(tips,ancstate);
+								rate=EstimateRate(currentVCVmat,tipsresid);
+								gsl_matrix *RateTimesVCVfortest=gsl_matrix_calloc(currentVCVmat->size1,currentVCVmat->size2);
+								gsl_matrix_memcpy(RateTimesVCVfortest, currentVCVmat);
+								gsl_matrix_scale(RateTimesVCVfortest,rate);
+								likelihood=GetLScore(currentVCVmat,tipsresid,rate);
+								nxsstring rootlabel="-lnL_";
+								rootlabel+=likelihood;
+								RootNode->SetLabel(rootlabel);
+								t.SetInternalLabels(true);
+								t.Update();
+                           // outtreef<<"gethasedgelengths = "<<t.GetHasEdgeLengths()<<endl;
+								char outputstring[14];
+								sprintf(outputstring,"%14.6f",likelihood);
+                            //outtreef<<endl<<"gethasedgelengths = "<<t.GetHasEdgeLengths();
+								
+								outtreef<<"\ntree tree"<<combinationcount<<" = [-ln likelihood = "<<outputstring<<" ] ";
+								NewickTreeWriter tw (&t);
+								tw.SetStream (&outtreef);
+								tw.SetWriteEdgeLengths(true);
+								tw.Write();
+								ProgressBar(0);
+								gsl_matrix_free(currentVCVmat);
+								gsl_vector_free(tips);
+								gsl_vector_free(tipsresid);
+								gsl_matrix_free(RateTimesVCVfortest);
+								
+							}
+							while (gsl_combination_next(c) == GSL_SUCCESS);
+							gsl_combination_free (c);
+						}
+						outtreef<<"\nend;";
+						outtreef.close();
+					}
+					if (chosenmodel==18 || chosenmodel==19) {
+						
                      //vector<Tree> BestTrees;
                      //vector<double> ScoresOfBestTrees;
-					double bestscore=GSL_POSINF;
+						double bestscore=GSL_POSINF;
                      //cout<<"cstart = "<<cstart<<" cend = "<<cend<<" gslposinf = "<<int(GSL_POSINF)<<endl;
-                    if (chosenmodel==18 && !definedfilename) {
-                        treefilename="BMPN";
-                        if ((cstart>0) && (cend>0)) {
-                            treefilename+="_";
-                            treefilename+=cstart;
-                            treefilename+="_";
-                            treefilename+=cend;
-                            treefilename+=".tre";
-                        }
-                        else {
-                            treefilename+="_ALL.tre";
-                        }
-                    }
-                    else if (chosenmodel==19 && !definedfilename) {
-                        treefilename="BMPO";
-                        if ((cstart>0) && (cend>0)) {
-                            treefilename+="_";
-                            treefilename+=cstart;
-                            treefilename+="_";
-                            treefilename+=cend;
-                            treefilename+=".tre";
-                        }
-                        else {
-                            treefilename+="_ALL.tre";
-                        }
-                        
-                    }
-                    ofstream outtreef;
-                    outtreef.open(treefilename.c_str());
+						if (chosenmodel==18 && !definedfilename) {
+							treefilename="BMPN";
+							if ((cstart>0) && (cend>0)) {
+								treefilename+="_";
+								treefilename+=cstart;
+								treefilename+="_";
+								treefilename+=cend;
+								treefilename+=".tre";
+							}
+							else {
+								treefilename+="_ALL.tre";
+							}
+						}
+						else if (chosenmodel==19 && !definedfilename) {
+							treefilename="BMPO";
+							if ((cstart>0) && (cend>0)) {
+								treefilename+="_";
+								treefilename+=cstart;
+								treefilename+="_";
+								treefilename+=cend;
+								treefilename+=".tre";
+							}
+							else {
+								treefilename+="_ALL.tre";
+							}
+							
+						}
+						ofstream outtreef;
+						outtreef.open(treefilename.c_str());
                    // if (outtreef.fail()) {
                    //     cout<<"Has trouble writing to file!!!!";
                  //   }
-					
-                    outtreef<<"#nexus\nbegin trees;";
-                    outtreef.close();
-                    gsl_combination *c;
-                    size_t combinationsize;
+						
+						outtreef<<"#nexus\nbegin trees;";
+						outtreef.close();
+						gsl_combination *c;
+						size_t combinationsize;
                     //int ntax=(intrees.GetIthTree(0)).GetNumLeaves();
-                    int totalnumberofcombinations=0;
-                    for (combinationsize=0;combinationsize<=(ntax-2);combinationsize++) { //ntax-1 internal nodes, minus the root (reml problem)
-                        totalnumberofcombinations+=int(gsl_sf_choose ((ntax-2), combinationsize));
-                    }
-                    message="There are ";
-                    message+=totalnumberofcombinations;
-                    message+=" total combinations to try, you are doing ";
-                    if (cend<0) {
-                        cend=totalnumberofcombinations+1;
-                    }
+						int totalnumberofcombinations=0;
+						for (combinationsize=0;combinationsize<=(ntax-2);combinationsize++) { //ntax-1 internal nodes, minus the root (reml problem)
+							totalnumberofcombinations+=int(gsl_sf_choose ((ntax-2), combinationsize));
+						}
+						message="There are ";
+						message+=totalnumberofcombinations;
+						message+=" total combinations to try, you are doing ";
+						if (cend<0) {
+							cend=totalnumberofcombinations+1;
+						}
                     //cout<<"cstart = "<<cstart<<" cend = "<<cend<<" gslposinf = "<<int(GSL_POSINF)<<endl;
-                    int actualcombinations=GSL_MIN(totalnumberofcombinations,cend-cstart+1);
-                    message+=actualcombinations;
-                    PrintMessage();
-                    int loopcounter=0;
-                    ProgressBar(actualcombinations);
-                    int combinationcount=0;
+						int actualcombinations=GSL_MIN(totalnumberofcombinations,cend-cstart+1);
+						message+=actualcombinations;
+						PrintMessage();
+						int loopcounter=0;
+						ProgressBar(actualcombinations);
+						int combinationcount=0;
                     //int cutoff=int(floor(combinationcount/10.0));
-                    int cutoff=500;
-                    message="\nComb.\t-lnL";
-                    PrintMessage();
-                    for (combinationsize=0;combinationsize<=(ntax-2);combinationsize++) { //if a node is selected, its child has brlen of zero; otherwise, its child's sibling does
-                        c=gsl_combination_calloc((ntax-2),combinationsize);
-                        do
-                        {
-                            combinationcount++;
-                            if (combinationcount>=cstart && combinationcount<=cend) {
-                                loopcounter++;
-                                ProgressBar(0);
-                                vector<int> nodestomakezero;
-                                for (int i=0;i<combinationsize;i++) {
-                                    nodestomakezero.push_back(int(gsl_combination_get(c,i)));
-                                }
-                                nodestomakezero.push_back(-1); //just to keep things from going awry when we're done with all the nodes
-                                int vectorstep=0;
-                                int nodecount=0;
-                                Tree t=intrees.GetIthTree(chosentree-1);
-                                t.SetEdgeLengths(true);
-                                t.SetInternalLabels(true);
-                                PreorderIterator <Node> n (t.GetRoot());
-                                NodePtr RootNode=t.GetRoot();
-                                NodePtr currentnode = n.begin();
-                                while (currentnode) {
-                                    if (!(currentnode->IsLeaf()) && (currentnode!=RootNode)) {
-                                        if (nodecount==nodestomakezero[vectorstep]) {
-                                            (currentnode->GetChild())->SetEdgeLength(0.0);
-                                            if (chosenmodel==19) {
-                                                ((currentnode->GetChild())->GetSibling())->SetEdgeLength(1.0);
-                                            }
-                                            vectorstep++;
-                                        }
-                                        else {
-                                            ((currentnode->GetChild())->GetSibling())->SetEdgeLength(0.0);
-                                            if (chosenmodel==19) {
-                                                (currentnode->GetChild())->SetEdgeLength(1.0);
-                                            }
-                                        }
-                                        nodecount++;
-                                    }
-                                    else if((currentnode==RootNode) && (chosenmodel==19)) {
-                                        (currentnode->GetChild())->SetEdgeLength(1.0);
-                                        ((currentnode->GetChild())->GetSibling())->SetEdgeLength(1.0);
-                                    }
-                                    currentnode=n.next();
-                                }
-                                gsl_matrix *currentVCVmat=gsl_matrix_calloc(ntax,ntax);
-                                currentVCVmat=DeleteStem(GetVCVwithTree(chosentaxset,t));
-                                gsl_vector *tips=gsl_vector_calloc(ntax);
-                                gsl_vector *tipsresid=gsl_vector_calloc(ntax);
-                                double ancstate;
-                                double rate;
-                                double likelihood;
-                                tips=GetTipValues(chosentaxset,chosenchar);
-                                ancstate=GetAncestralState(currentVCVmat,tips);
-                                tipsresid=GetTipResiduals(tips,ancstate);
-                                rate=EstimateRate(currentVCVmat,tipsresid);
-                                gsl_matrix *RateTimesVCVfortest=gsl_matrix_calloc(currentVCVmat->size1,currentVCVmat->size2);
-                                gsl_matrix_memcpy(RateTimesVCVfortest, currentVCVmat);
-                                gsl_matrix_scale(RateTimesVCVfortest,rate);
-                                likelihood=GetLScore(currentVCVmat,tipsresid,rate);
+						int cutoff=500;
+						message="\nComb.\t-lnL";
+						PrintMessage();
+						for (combinationsize=0;combinationsize<=(ntax-2);combinationsize++) { //if a node is selected, its child has brlen of zero; otherwise, its child's sibling does
+							c=gsl_combination_calloc((ntax-2),combinationsize);
+							do
+							{
+								combinationcount++;
+								if (combinationcount>=cstart && combinationcount<=cend) {
+									loopcounter++;
+									ProgressBar(0);
+									vector<int> nodestomakezero;
+									for (int i=0;i<combinationsize;i++) {
+										nodestomakezero.push_back(int(gsl_combination_get(c,i)));
+									}
+									nodestomakezero.push_back(-1); //just to keep things from going awry when we're done with all the nodes
+									int vectorstep=0;
+									int nodecount=0;
+									Tree t=intrees.GetIthTree(chosentree-1);
+									t.SetEdgeLengths(true);
+									t.SetInternalLabels(true);
+									PreorderIterator <Node> n (t.GetRoot());
+									NodePtr RootNode=t.GetRoot();
+									NodePtr currentnode = n.begin();
+									while (currentnode) {
+										if (!(currentnode->IsLeaf()) && (currentnode!=RootNode)) {
+											if (nodecount==nodestomakezero[vectorstep]) {
+												(currentnode->GetChild())->SetEdgeLength(0.0);
+												if (chosenmodel==19) {
+													((currentnode->GetChild())->GetSibling())->SetEdgeLength(1.0);
+												}
+												vectorstep++;
+											}
+											else {
+												((currentnode->GetChild())->GetSibling())->SetEdgeLength(0.0);
+												if (chosenmodel==19) {
+													(currentnode->GetChild())->SetEdgeLength(1.0);
+												}
+											}
+											nodecount++;
+										}
+										else if((currentnode==RootNode) && (chosenmodel==19)) {
+											(currentnode->GetChild())->SetEdgeLength(1.0);
+											((currentnode->GetChild())->GetSibling())->SetEdgeLength(1.0);
+										}
+										currentnode=n.next();
+									}
+									gsl_matrix *currentVCVmat=gsl_matrix_calloc(ntax,ntax);
+									currentVCVmat=DeleteStem(GetVCVwithTree(chosentaxset,t));
+									gsl_vector *tips=gsl_vector_calloc(ntax);
+									gsl_vector *tipsresid=gsl_vector_calloc(ntax);
+									double ancstate;
+									double rate;
+									double likelihood;
+									tips=GetTipValues(chosentaxset,chosenchar);
+									ancstate=GetAncestralState(currentVCVmat,tips);
+									tipsresid=GetTipResiduals(tips,ancstate);
+									rate=EstimateRate(currentVCVmat,tipsresid);
+									gsl_matrix *RateTimesVCVfortest=gsl_matrix_calloc(currentVCVmat->size1,currentVCVmat->size2);
+									gsl_matrix_memcpy(RateTimesVCVfortest, currentVCVmat);
+									gsl_matrix_scale(RateTimesVCVfortest,rate);
+									likelihood=GetLScore(currentVCVmat,tipsresid,rate);
                                 //t.Draw(cout);
                                 //cout<<"likelihood is "<<likelihood<<endl;
-                                if (likelihood==likelihood) { //test for NaN
+									if (likelihood==likelihood) { //test for NaN
                                                               // if (likelihood<=bestscore) {
                                                               // if(BestTrees.size()<nbest) {
                                                               //       BestTrees.push_back(t);
@@ -10944,36 +13374,36 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
                                                               // }
                                                               // else {
                                                               //save all trees
-                                    outtreef.open(treefilename.c_str(), ios::out | ios::app );
+										outtreef.open(treefilename.c_str(), ios::out | ios::app );
                                     // }
-                                    if (likelihood<=bestscore) {
-                                        bestscore=likelihood;
-                                    }
-                                    nxsstring rootlabel="lnL_";
-                                    rootlabel+=likelihood;
-                                    RootNode->SetLabel(rootlabel);
-                                    outtreef<<"\ntree tree"<<combinationcount<<" = [&R] [likelihood = "<<likelihood<<" ancstate = "<<ancstate<<" rate = "<<rate<<" ] ";
-                                    t.Write(outtreef);
-                                    outtreef.close();
-									
+										if (likelihood<=bestscore) {
+											bestscore=likelihood;
+										}
+										nxsstring rootlabel="-lnL_";
+										rootlabel+=likelihood;
+										RootNode->SetLabel(rootlabel);
+										outtreef<<"\ntree tree"<<combinationcount<<" = [&R] [-ln likelihood = "<<likelihood<<" ancstate = "<<ancstate<<" rate = "<<rate<<" ] ";
+										t.Write(outtreef);
+										outtreef.close();
+										
 															  }
-                                if (loopcounter==cutoff) {
-                                    message="";
-                                    message+=combinationcount;
-                                    message+="\t";
-                                    message+=bestscore;
-                                    PrintMessage();
-                                    loopcounter=0;
-                                }
-								gsl_matrix_free(currentVCVmat);
-								gsl_vector_free(tips);
-								gsl_vector_free(tipsresid);
-								gsl_matrix_free(RateTimesVCVfortest);
+									if (loopcounter==cutoff) {
+										message="";
+										message+=combinationcount;
+										message+="\t";
+										message+=bestscore;
+										PrintMessage();
+										loopcounter=0;
+									}
+									gsl_matrix_free(currentVCVmat);
+									gsl_vector_free(tips);
+									gsl_vector_free(tipsresid);
+									gsl_matrix_free(RateTimesVCVfortest);
+									}
 								}
+							while ((gsl_combination_next(c) == GSL_SUCCESS) && (combinationcount<=cend));
+							gsl_combination_free (c);
 							}
-                        while ((gsl_combination_next(c) == GSL_SUCCESS) && (combinationcount<=cend));
-                        gsl_combination_free (c);
-						}
                    // cout<<"Saving "<<BestTrees.size()<<" best trees"<<endl;
                     //for (int i=0;i<BestTrees.size();i++) {
                     //    Tree goodtree=BestTrees.back();
@@ -10986,70 +13416,86 @@ void BROWNIE::HandleDebugOptimization( NexusToken& token )
                    // outtreef<<"\ntree tree"<<i+1<<" = [&R] [likelihood = "<<goodlikelihood<<" ] ";
                    //  goodtree.Write(outtreef);
                    // }
-                    outtreef.open(treefilename.c_str(), ios::out | ios::app );
-                    outtreef<<"\nend;";
-                    outtreef.close();
+						outtreef.open(treefilename.c_str(), ios::out | ios::app );
+						outtreef<<"\nend;";
+						outtreef.close();
+						}
+					
+					if (chosenmodel==6) {
+						OptimizationFnMultiModel my_fn(VCV0,VCV1,VCV2,VCV3,VCV4,VCV5,VCV6,VCV7,VCV8,VCV9,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
+						gsl_vector *optimalvalues=gsl_vector_calloc(7);
+						gsl_vector_memcpy(optimalvalues,my_fn.GeneralOptimization(6));
+						optimalvaluescontinuouschar=gsl_vector_calloc(4);
+						//optimalvalueslabels.clear();
+						//optimalvalueslabels.push_back("ancestral state");
+						//optimalvalueslabels.push_back("rate on branches with no changes");
+						//optimalvalueslabels.push_back("rate on branches with changes");
+						//optimalvalueslabels.push_back("lnL");
+						gsl_vector_set(optimalvaluescontinuouschar,0,gsl_vector_get(optimalvalues,1));
+						gsl_vector_set(optimalvaluescontinuouschar,1,gsl_vector_get(optimalvalues,2));
+						gsl_vector_set(optimalvaluescontinuouschar,2,gsl_vector_get(optimalvalues,3));
+						gsl_vector_set(optimalvaluescontinuouschar,3,gsl_vector_get(optimalvalues,0));
+						message="\n-lnL = ";
+						message+=gsl_vector_get(optimalvalues,0);
+						message+="\nAIC = ";
+						message+=2*(1.0*gsl_vector_get(optimalvalues,0) + 3);
+						message+="\nAICc = ";
+						message+=(2*1.0*gsl_vector_get(optimalvalues,0))+2*3+2.0*3*(4.0)/(ntax-3-1);
+						message+="\nAncestral state = ";
+						message+=gsl_vector_get(optimalvalues,1);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalvalues,4);
+						message+="\nRate on branches with no changes = ";
+						message+=gsl_vector_get(optimalvalues,2);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalvalues,5);
+						message+="\nRate on branches with changes = ";
+						message+=gsl_vector_get(optimalvalues,3);
+						message+=" +/- ";
+						message+=gsl_vector_get(optimalvalues,6);
+						PrintMessage();
+						if (tablef_open) {
+							tmessage="Tree\tTree weight\tTree name\tChar\tModel\t-LnL\tAIC\tAICc\tAncState\tRate_No_changes\tRate_Changes\n";
+							tmessage+=chosentree;
+							tmessage+="\t";
+							tmessage+=treeweight;
+							tmessage+="\t";
+							tmessage+=treename;
+							tmessage+="\t";
+							tmessage+=chosenchar;
+							tmessage+="\tBMC\t";
+							tmessage+=gsl_vector_get(optimalvalues,0);
+							tmessage+="\t";
+							tmessage+=2*(1.0*gsl_vector_get(optimalvalues,0) + 3);
+							tmessage+="\t";
+							tmessage+=(2*1.0*gsl_vector_get(optimalvalues,0))+2*3+2.0*3*(4.0)/(ntax-3-1);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalvalues,1);
+							tmessage+="\t";							
+							tmessage+=gsl_vector_get(optimalvalues,2);
+							tmessage+="\t";
+							tmessage+=gsl_vector_get(optimalvalues,3);
+							tmessage+="\n";
+							tablef<<tmessage;
+						}
+						gsl_vector_free(optimalvalues);
 					}
-				
-                if (chosenmodel==6) {
-                    OptimizationFnMultiModel my_fn(VCV0,VCV1,VCV2,VCV3,VCV4,VCV5,VCV6,VCV7,VCV8,VCV9,tips,variance,maxiterations, stoppingprecision, randomstarts, stepsize,detailedoutput);
-                    gsl_vector *optimalvalues=gsl_vector_calloc(7);
-                    gsl_vector_memcpy(optimalvalues,my_fn.GeneralOptimization(6));
-                   	message="\nlnL = ";
-					message+=gsl_vector_get(optimalvalues,0);
-					message+="\nAIC = ";
-					message+=2*(gsl_vector_get(optimalvalues,0) + gsl_vector_get(optimalvalues,1));
-					message+="\nAICc = ";
-					message+=(2*gsl_vector_get(optimalvalues,0))+2*gsl_vector_get(optimalvalues,1)+2*gsl_vector_get(optimalvalues,1)*(gsl_vector_get(optimalvalues,1)+1)/(ntax-gsl_vector_get(optimalvalues,1)-1);
-                    message+="\nAncestral state = ";
-                    message+=gsl_vector_get(optimalvalues,1);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalvalues,4);
-                    message+="\nRate on branches with no changes = ";
-                    message+=gsl_vector_get(optimalvalues,2);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalvalues,5);
-                    message+="\nRate on branches with changes = ";
-                    message+=gsl_vector_get(optimalvalues,3);
-                    message+=" +/- ";
-                    message+=gsl_vector_get(optimalvalues,6);
-                    message+="\nlnL = ";
-                    message+=gsl_vector_get(optimalvalues,0);
-                    PrintMessage();
-                    if (tablef_open) {
-                        tmessage="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,0);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,1);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,4);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,2);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,5);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,3);
-                        tmessage+="\t";
-                        tmessage+=gsl_vector_get(optimalvalues,6);
-                        tablef<<tmessage;
-                    }
-					gsl_vector_free(optimalvalues);
+					gsl_matrix_free(VCV0);
+					gsl_matrix_free(VCV1);
+					gsl_matrix_free(VCV2);
+					gsl_matrix_free(VCV3);
+					gsl_matrix_free(VCV4);
+					gsl_matrix_free(VCV5);
+					gsl_matrix_free(VCV6);
+					gsl_matrix_free(VCV7);
+					gsl_matrix_free(VCV8);
+					gsl_matrix_free(VCV9);
+					
+					}
+				gsl_matrix_free(VCV);
+				gsl_vector_free(tips);
+				gsl_vector_free(variance);
 				}
-				gsl_matrix_free(VCV0);
-				gsl_matrix_free(VCV1);
-				gsl_matrix_free(VCV2);
-				gsl_matrix_free(VCV3);
-				gsl_matrix_free(VCV4);
-				gsl_matrix_free(VCV5);
-				gsl_matrix_free(VCV6);
-				gsl_matrix_free(VCV7);
-				gsl_matrix_free(VCV8);
-				gsl_matrix_free(VCV9);
-				
-				}
-			gsl_matrix_free(VCV);
-			gsl_vector_free(tips);
-			gsl_vector_free(variance);
 			}
         chosentree=originalchosentree; //restore initial values.
         chosenchar=originalchosenchar;
@@ -11317,7 +13763,225 @@ gsl_permutation_free (p);
 return rateparameter;
 }
 
+double BROWNIE::GetDiscreteCharLnL_gsl( const gsl_vector * variables, void *obj) 
+{
+	double temp;
+	temp= ((BROWNIE*)obj)->GetDiscreteCharLnL(variables);
+	if((gsl_isinf (temp))<0) {
+		temp=GSL_POSINF;
+	}
+	return temp;
+}
 
+double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
+{
+	gsl_vector *localvariables=gsl_vector_calloc(variables->size);
+	gsl_vector_memcpy(localvariables,variables);
+	if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
+		for (int i=0;i<variables->size;i++) {
+			gsl_vector_set(localvariables,i,exp(gsl_vector_get(localvariables,i)));
+		}
+	}
+	double likelihood=GSL_POSINF;
+	negbounceparam=-1;
+	if (numberoffreeparameters>0) { //if the input vector has useful variables; this number is only zero in the case of some user models
+		if (gsl_vector_min(localvariables)<0) { //means we have a negative rate or state frequency if <0, so leave the likelihood set at a really bad number
+			negbounceparam=gsl_vector_min_index(localvariables);
+			if(detailedoutput) {
+				cout<<"Had negative input, variables vector is ( ";
+				for (int i=0;i<numberoffreeparameters;i++) {
+					cout<<gsl_vector_get(localvariables,i)<<" ";
+				}
+				cout<<")"<<endl;
+			}
+			return likelihood;
+		}
+	}
+	//else {
+		//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+		int numberofrates=(localnumbercharstates*localnumbercharstates)-localnumbercharstates;
+		int ntax=taxa->GetNumTaxonLabels();
+		
+		gsl_matrix *RateMatrix=gsl_matrix_calloc(localnumbercharstates,localnumbercharstates);
+		gsl_vector *ancestralstatevector=gsl_vector_calloc(localnumbercharstates);
+		int vectorposition=0;
+		int position=-1; //used in user-set matrix only
+		for (int i=0; i<localnumbercharstates;i++) {
+			for (int j=0; j<localnumbercharstates;j++) {
+				if (i!=j) {
+					if (discretechosenmodel==1) { //one rate
+						gsl_matrix_set(RateMatrix,i,j,gsl_vector_get(localvariables,0));
+						vectorposition=1;
+					}
+					if (discretechosenmodel==2) { //rev
+						if (i<j) {
+							gsl_matrix_set(RateMatrix,i,j,gsl_vector_get(localvariables,vectorposition));
+							vectorposition++;
+							gsl_matrix_set(RateMatrix,j,i,gsl_matrix_get(RateMatrix,i,j)); //since symmetric
+						}
+					}
+					if (discretechosenmodel==3) { //nonrev
+						gsl_matrix_set(RateMatrix,i,j,gsl_vector_get(localvariables,vectorposition)); //all off-diagonal elements get their own rates
+						vectorposition++;
+					}
+					if (discretechosenmodel==4) { //user
+						if (debugmode) {
+							cout<<"vectorposition = "<<vectorposition<<"ratematassignvector["<<vectorposition<<"]="<<ratematassignvector[vectorposition]<<endl;
+						}
+						if (ratematassignvector[vectorposition]>=0) { //means there's an assigned rate
+							gsl_matrix_set(RateMatrix,i,j,ratematfixedvector[(ratematassignvector[vectorposition])]);
+						}
+						else {
+							position=-1*(1+ratematassignvector[vectorposition]);
+							if (debugmode) {
+								cout<<"calling position "<<position<<" for variables vector of size "<<localvariables->size<<endl;
+							}
+							gsl_matrix_set(RateMatrix,i,j,gsl_vector_get(localvariables,position)); //means it's a variable rate
+						}
+						vectorposition++;
+					}
+				}
+			}
+		}
+		if (discretechosenmodel==4) {
+			vectorposition=position+1;
+		}
+		for (int i=0; i<localnumbercharstates; i++) { //fill in diagonal entries
+			double ratesum=0;
+			for (int j=0; j<localnumbercharstates; j++) {
+				ratesum+=gsl_matrix_get(RateMatrix,i,j);
+			}
+			gsl_matrix_set(RateMatrix,i,i,-1.0*ratesum);
+		}
+		if (discretechosenstatefreqmodel==3) { //Calculate Equilibrium state freqs by just getting a Pmatrix (P=exp(QT)) for a really big time
+			gsl_matrix* Pmatrix=gsl_matrix_calloc(localnumbercharstates,localnumbercharstates);
+			gsl_matrix* StartFreqs=gsl_matrix_calloc(1,localnumbercharstates);
+			gsl_matrix_set_all (StartFreqs, 1.0/localnumbercharstates); //start with equal freqs
+			gsl_matrix* EndFreqs=gsl_matrix_calloc(1,localnumbercharstates);
+			gsl_matrix* EndFreqs2=gsl_matrix_calloc(1,localnumbercharstates);
+			gsl_matrix_set_all(EndFreqs2,1.0/localnumbercharstates);
+			double maxdiff=1.0;
+			double tolerlimit=0.0001/localnumbercharstates; //More char states, want more precision
+			double simulatedtime=1000;
+			while (maxdiff>tolerlimit) {
+				Pmatrix=ComputeTransitionProb(RateMatrix,simulatedtime); //A really long time
+				simulatedtime*=100; //increase it in case we need to do this over a longer time interval
+				gsl_blas_dgemm (CblasNoTrans, CblasNoTrans,1.0, StartFreqs, Pmatrix,0.0, EndFreqs);
+				gsl_blas_dgemm (CblasNoTrans, CblasNoTrans,1.0, EndFreqs, Pmatrix,0.0, EndFreqs2);
+				gsl_matrix_sub(EndFreqs,EndFreqs2); //leaves EndFreqs2 unchanged, stores diff in EndFreqs
+				maxdiff=0.0;
+				for (int i=0;i<localnumbercharstates;i++) {
+					maxdiff=GSL_MAX(fabs(gsl_matrix_get(EndFreqs,0,i)),maxdiff);
+				}
+			}
+			for (int i=0;i<localnumbercharstates;i++) {
+				gsl_vector_set(ancestralstatevector,i,gsl_matrix_get(EndFreqs2,0,i));
+			}
+			gsl_matrix_free(Pmatrix);
+			gsl_matrix_free(StartFreqs);
+			gsl_matrix_free(EndFreqs);
+			gsl_matrix_free(EndFreqs2);
+		}
+		else {
+			for (int i=0; i<localnumbercharstates; i++) { //do ancestralstatevector for freqs
+				if (discretechosenstatefreqmodel==1) {
+					//Uniform
+					gsl_vector_set(ancestralstatevector,i,1.0/localnumbercharstates);
+				}
+				else if (discretechosenstatefreqmodel==2) {
+					double frequency=0.0;
+					for (int j=0;j<ntax;j++) {
+						if (discretecharacters->GetInternalRepresentation(j,discretechosenchar)==i) {
+							frequency+=1.0/ntax;
+						}
+					}
+					gsl_vector_set(ancestralstatevector,i,frequency);
+				}
+				else if (discretechosenstatefreqmodel==4) {
+					if (debugmode) {
+						cout<<"i="<<i<<" variables->size="<<localvariables->size<<" vectorposition="<<vectorposition<<endl;
+					}
+					if (i<(localnumbercharstates-1)) {
+						if (debugmode) {
+							cout<<"vectorposition = "<<vectorposition<<endl;
+						}
+						gsl_vector_set(ancestralstatevector,i,gsl_vector_get(localvariables,vectorposition));
+						vectorposition++;
+					}
+					else { //last number must be 1-sum(other states)
+						double frequencysum=0.0;
+						for (int j=0; j<i;j++) {
+							frequencysum+=gsl_vector_get(ancestralstatevector,j);
+						}
+						gsl_vector_set(ancestralstatevector,i,1.0-frequencysum);
+					}
+				}
+				else if (discretechosenstatefreqmodel==5) {
+					//user
+					if (userstatefreqvector.size()!=localnumbercharstates) {
+						errormsg="The current (possibly default) vector of user-specified state frequencies ";
+						errormsg+="\nwith size ";
+						int freqvectorsize=userstatefreqvector.size();
+						errormsg+=freqvectorsize;
+						errormsg+=" should have size ";
+						errormsg+=localnumbercharstates;
+						errormsg+=" for the selected character";
+						throw XNexus( errormsg);
+					}
+					gsl_vector_set(ancestralstatevector,i,userstatefreqvector[i]);
+				}
+			}
+		}
+		/*cout<<"\n\nbbbbbbbbbbbbbbbbbbbbbbb"<<endl;
+		*/
+		if (debugmode) {
+			PrintMatrix(RateMatrix);
+			cout<<"\nancestral freq: ";
+			for (int i=0; i<ancestralstatevector->size;i++) {
+				cout<<gsl_vector_get(ancestralstatevector,i)<<"\t";
+			}
+			cout<<endl;
+		}
+		double frequencysum=0.0;
+		for (int i=0; i<ancestralstatevector->size;i++) {
+			frequencysum+=gsl_vector_get(ancestralstatevector,i);
+		}
+		if ((fabs(frequencysum-1.0)>DBL_EPSILON) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
+			if(detailedoutput) {
+				cout<<"\n\tHad wrong state frequency input, ancestralstatevector vector is ( ";
+				for (int i=0;i<ancestralstatevector->size;i++) {
+					cout<<gsl_vector_get(ancestralstatevector,i)<<" ";
+				}
+				cout<<") ";
+				if (frequencysum!=1.0) {
+					cout<<"[SUM NOT 1] ";
+				}
+				if (gsl_vector_min(ancestralstatevector)<0) {
+					cout<<"[MIN < 0] ";
+				}
+				if (gsl_vector_max(ancestralstatevector)>1 ) {
+					cout<<"[MAX > 1] ";
+				}
+				cout<<endl;
+			}
+			likelihood=GSL_POSINF;
+			
+			return likelihood;	
+		}
+		
+		likelihood=(CalculateDiscreteCharLnL(RateMatrix,ancestralstatevector));
+		//cout<<"likelihood is "<<likelihood<<endl;
+		gsl_matrix_swap(currentdiscretecharQmatrix,RateMatrix);
+		//cout<<"currentdiscretecharQmatrix\n"; 
+		//PrintMatrix(currentdiscretecharQmatrix);
+		gsl_vector_swap(currentdiscretecharstatefreq,ancestralstatevector);
+		gsl_matrix_free(RateMatrix);
+		gsl_vector_free(ancestralstatevector);
+		gsl_vector_free(localvariables);
+		//cout<<"\neeeeeeeeeeeeeeeeeeeeeeeeeee"<<endl;
+		return likelihood;
+	//}
+}
 
 
 
@@ -11445,9 +14109,9 @@ gsl_vector * BROWNIE::LindyGeneralOptimization(int ChosenModel)
 		if (hitlimits) {
 			message+=" **Max iterations hit; see WARNING below**";
 		}
-		message+="\n   LnL = ";
+		message+="\n   -LnL = ";
 		char outputstring[60];
-		sprintf(outputstring,"%60.45f",-1.0*(s->fval));
+		sprintf(outputstring,"%60.45f",1.0*(s->fval));
 		message+=outputstring;
 		// message+="\n   Rate = ";
 		// message+=gsl_vector_get(s->x,0);
@@ -11493,55 +14157,1010 @@ gsl_vector * BROWNIE::LindyGeneralOptimization(int ChosenModel)
 	return finalvector;
 }
 
-
-
-
-
-////////////////////////////////////////////////
-
-
-//Calculates the likelihood of discrete character chosenchar on tree chosentree
-double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector, bool returnancstates)
+gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 {
-	double lnL=0;
-	map<Node*, vector<double> > stateprobatnodes;
-	Tree T=intrees.GetIthTree(chosentree-1);
-	NodeIterator <Node> n (T.GetRoot());
+	bestdiscretelikelihood=GSL_POSINF;
+	bool globalbesthadfixedzerosorones=false;
+	int hitlimitscount=0;
+	//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+	int numberofrates=(localnumbercharstates*localnumbercharstates)-localnumbercharstates;
+	int ntax=taxa->GetNumTaxonLabels();
+	numberoffreerates=0;
+	numberoffreefreqs=0;
+	//gsl_matrix_free(optimaldiscretecharQmatrix);
+	optimaldiscretecharQmatrix=gsl_matrix_calloc(localnumbercharstates,localnumbercharstates);
+	currentdiscretecharQmatrix=gsl_matrix_calloc(localnumbercharstates,localnumbercharstates);
+	//gsl_vector_free(optimaldiscretecharstatefreq);
+	optimaldiscretecharstatefreq=gsl_vector_calloc(localnumbercharstates);
+	currentdiscretecharstatefreq=gsl_vector_calloc(localnumbercharstates);
+	double currentstepsize=stepsize;
+
+	if (discretechosenmodel==1) {
+		numberoffreerates=1;
+	}
+	else if (discretechosenmodel==2) {
+		numberoffreerates=numberofrates/2;
+	}
+	else if (discretechosenmodel==3) {
+		numberoffreerates=numberofrates;
+	}
+	else if (discretechosenmodel==4) {
+		numberoffreerates=freerateletterstring.size();
+	}
+	if (discretechosenstatefreqmodel==4) {
+		numberoffreefreqs=localnumbercharstates-1;
+	}
+	numberoffreeparameters=numberoffreerates+numberoffreefreqs; //stored globally for later calculation of AIC/AICc
+	if (((1.0*ntax)/(1.0*numberoffreeparameters))<10 && !allchar) {
+		message="\n-------------------------------------------------------------------------------\n WARNING: You are trying to estimate ";
+		message+=numberoffreeparameters;
+		if (numberoffreeparameters==1) {
+			message+=" parameter, but only have ";
+		}
+		else {
+			message+=" parameters, but only have ";
+		}
+		message+=ntax; 
+		message+=" taxa.\n Make sure to try some simpler models, and expect quite imprecise estimates.\n-------------------------------------------------------------------------------";
+		PrintMessage();
+	}
+	else if (((discretecharacters->GetNChar())*((1.0*ntax)/(1.0*numberoffreeparameters)))<10 && allchar) {
+		message="\n-------------------------------------------------------------------------------\n WARNING: You are trying to estimate ";
+		message+=numberoffreeparameters;
+		if (numberoffreeparameters==1) {
+			message+=" parameter, but only have ";
+		}
+		else {
+			message+=" parameters, but only have ";
+		}
+		message+=ntax; 
+		message+=" taxa and ";
+		message+=discretecharacters->GetNChar();
+		message+=" characters.\n Make sure to try some simpler models, and expect quite imprecise estimates.\n-------------------------------------------------------------------------------";
+		PrintMessage();
+	}
+	
+	size_t np=numberoffreeparameters;
+	gsl_vector * finalvector=gsl_vector_calloc((2*np)+1);
+	if (np>0) {
+		gsl_vector * results=gsl_vector_calloc(np);
+		double estimates[randomstarts][np];
+		double startingvalues[randomstarts][np];
+		double likelihoods[randomstarts][1];
+		if(detailedoutput==false) {
+			ProgressBar(randomstarts);
+		}
+		for (int startnum=0;startnum<randomstarts;startnum++) {
+			if (optimizationalgorithm==1) { //do nelder-mead simplex
+				const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+				gsl_multimin_fminimizer *s = NULL;
+				gsl_vector *ss, *x;
+				size_t iter = 0, i;
+				int status;
+				double size;
+				bool hitlimits=false;
+				/* Initial vertex size vector */
+				ss = gsl_vector_alloc (np);
+				gsl_vector_set_all (ss, currentstepsize);
+				
+				/* Starting points */
+				x = gsl_vector_calloc (np);
+				if (startnum==0 || (gsl_ran_flat(r,0,1))>0.5 ) { //about 50% of the time, start from these values
+					for (int i=0; i<numberoffreerates; i++) {
+						gsl_vector_set (x,i,GSL_MIN(gsl_ran_exponential (r,0.5),gsl_ran_flat(r,0,1) )); //starting rate
+						startingvalues[startnum][i]=gsl_vector_get(x,i);
+					}
+					for (int i=numberoffreerates; i<numberoffreerates+numberoffreefreqs; i++) {  
+						gsl_vector_set (x,i,(1.0/localnumbercharstates)); //starting freqs are equal
+						startingvalues[startnum][i]=gsl_vector_get(x,i);			
+					}
+				}
+				else { //start again from near current point
+					for (int i=0; i<numberoffreerates; i++) { 
+						gsl_vector_set (x,i,gsl_ran_exponential(r,(estimates[startnum-1][i]))); //use a modified optimal value from the last run
+						startingvalues[startnum][i]=gsl_vector_get(x,i);
+					}
+					for (int i=numberoffreerates; i<numberoffreerates+numberoffreefreqs; i++) {
+						gsl_vector_set (x,i,(estimates[startnum-1][i])); //use optimal value from the last run
+						startingvalues[startnum][i]=gsl_vector_get(x,i);			
+					}			
+				}
+				if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
+					for (int i=0; i<x->size; i++) {
+						gsl_vector_set(x,i,log(gsl_vector_get(x,i)));
+					}
+				}
+				BROWNIE *pt;
+				pt=(this);
+				double (*F)(const gsl_vector *, void *);
+				F = &BROWNIE::GetDiscreteCharLnL_gsl;
+				gsl_multimin_function minex_func;
+				minex_func.f=*F;
+				minex_func.params=pt;
+				minex_func.n = np;
+				s = gsl_multimin_fminimizer_alloc (T, np);
+				gsl_multimin_fminimizer_set (s, &minex_func, x, ss);
+				do
+				{
+					iter++;
+				/*	if (negbounceparam>-1) { //Means the previous iteration went too low at that position; we'll set the value to zero before iterating again
+						if (detailedoutput) {
+							cout<<"Had a negative value; now changing s->x from"<<endl;
+							PrintVector(s->x);
+							gsl_vector_set(s->x,negbounceparam,0.0);
+							cout<<endl<<"to"<<endl;
+							PrintVector(s->x);
+						}
+					} */
+					status = gsl_multimin_fminimizer_iterate(s);
+					if (status!=0) { //0 Means it's a success in c++, but not in C
+						printf ("error: %s\n", gsl_strerror (status));
+						break;
+					}
+					size = gsl_multimin_fminimizer_size (s);
+					status = gsl_multimin_test_size (size, stoppingprecision); //since we want more precision
+					if (status == GSL_SUCCESS)
+					{
+					//printf ("converged to minimum at\n");
+					}
+					
+					if (detailedoutput) {
+						if (iter<100 || (iter%25 ==0)) {
+							printf ("%5d ", iter);
+							for (i = 0; i < np; i++)
+							{
+								if (nonnegvariables) {
+									printf ("%10.9e ", exp(gsl_vector_get (s->x, i)));
+								}
+								
+								else {
+									printf ("%10.9e ", gsl_vector_get (s->x, i));
+								}
+							}
+							printf ("f() = %7.9f size = %.9f\n", s->fval, size);	
+						}
+					}
+				}
+				while (status == GSL_CONTINUE && iter < maxiterations);
+				
+			//cout<<"Current BEST matrix\n\n";
+			//PrintMatrix(optimaldiscretecharQmatrix);
+			//cout<<"\n\nLast matrix\n";
+			//cout<<"Old best likelihood = ";
+			//cout<<bestlikelihood;
+			//cout<<"\n    Last likelihood = ";
+			//cout<<s->fval;
+			//cout<<endl<<endl;
+			//PrintMatrix(currentdiscretecharQmatrix);
+				if (s->fval<bestdiscretelikelihood) {
+					globalbesthadfixedzerosorones=false;
+					gsl_vector_memcpy(results,s->x);
+					if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
+						for (int i=0; i<x->size; i++) {
+							gsl_vector_set(results,i,exp(gsl_vector_get(results,i)));
+						}
+					}					
+					bestdiscretelikelihood=s->fval;
+				//if (debugmode) {
+				//	cout<<"likelihood score improved"<<endl;
+				//}
+					gsl_matrix_swap(currentdiscretecharQmatrix,optimaldiscretecharQmatrix);
+					gsl_vector_swap(currentdiscretecharstatefreq,optimaldiscretecharstatefreq);
+				}
+				//The following section tries to round the parameter values: it's possible that 0 is a better value than some very small double
+				gsl_vector *roundx=gsl_vector_calloc((s->x)->size);
+				gsl_vector_memcpy(roundx,s->x);
+				for (int i=0;i<roundx->size;i++) {
+					if(nonnegvariables) {
+						gsl_vector_set(roundx,i,exp(gsl_vector_get(roundx,i)));
+					}
+					if (gsl_vector_get(roundx,i)<8.0*DBL_EPSILON) {
+						gsl_vector_set(roundx,i,0.0);
+					}
+					else if (fabs(1.0-gsl_vector_get(roundx,i))<8.0*DBL_EPSILON) {
+						gsl_vector_set(roundx,i,1.0);
+					}
+				}
+				bool roundedwasbetter=false;
+				bool orignonnegvariables=nonnegvariables;
+				nonnegvariables=false; //since roundx is untransformed
+				double roundlikelihood=GetDiscreteCharLnL(roundx);
+				nonnegvariables=orignonnegvariables;
+				if (roundlikelihood<bestdiscretelikelihood) {
+					roundedwasbetter=true;
+					globalbesthadfixedzerosorones=true;
+					bestdiscretelikelihood=roundlikelihood;
+					gsl_matrix_swap(currentdiscretecharQmatrix,optimaldiscretecharQmatrix);
+					gsl_vector_swap(currentdiscretecharstatefreq,optimaldiscretecharstatefreq);
+					gsl_vector_memcpy(results,roundx);
+				}
+				if (detailedoutput) {
+						printf ("fixed zeros %5d ", iter);
+						for (i = 0; i < np; i++)
+						{
+				
+								printf ("%10.9e ", gsl_vector_get (roundx, i));
+
+						}
+						printf ("f() = %7.9f \n", roundlikelihood);	
+				}
+				
+				
+				if (iter==maxiterations) {
+					hitlimits=true;
+					hitlimitscount++;
+				}
+				message="Replicate ";
+				message+=startnum+1;
+				if (hitlimits) {
+					message+=" **WARNING**";
+				}
+				message+="\n   NM iterations needed = ";
+				int iterationsrequired=iter;
+				message+=iterationsrequired;
+				if (hitlimits) {
+					message+=" **Max iterations hit; see WARNING below**";
+				}
+				message+="\n   -LnL = ";
+				char outputstring[60];
+				sprintf(outputstring,"%60.45f",1.0*(s->fval));
+				if (roundedwasbetter) {
+					sprintf(outputstring,"%60.45f",1.0*roundlikelihood);					
+				}
+				message+=outputstring;
+				message+="\n   Starts:    ";
+				for (int parameternumber=0; parameternumber<np; parameternumber++) {
+					message+=startingvalues[startnum][parameternumber];
+					message+=" ";
+				}				
+				message+="\n   Estimates: ";
+				for (int parameternumber=0; parameternumber<np; parameternumber++) {
+					if(roundedwasbetter) {
+						estimates[startnum][parameternumber]=gsl_vector_get(roundx,parameternumber);
+					}
+					else {
+						if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
+							estimates[startnum][parameternumber]=exp(gsl_vector_get(s->x,parameternumber));
+						}	
+						else {
+							estimates[startnum][parameternumber]=gsl_vector_get(s->x,parameternumber);
+						}
+					}
+					message+=estimates[startnum][parameternumber];
+					message+=" ";
+				}		
+			// message+="\n   Rate = ";
+			// message+=gsl_vector_get(s->x,0);
+				if (detailedoutput) {
+					PrintMessage();
+				}
+				gsl_vector_free(x);
+				gsl_vector_free(ss);
+				gsl_vector_free(roundx);
+				gsl_multimin_fminimizer_free (s);
+				if (hitlimits && redobad) {
+					startnum--; //redo this rep (from a new starting point)
+					if (hitlimitscount>giveupfactor*randomstarts) {
+						message="\n----------------------------------------------------------------------------\n";
+						message+= " ABORTING: You have chosen to keep restarting until you get ";
+						message+=randomstarts;
+						message+=" to\n";
+						message+=" complete, but we've already tried ";
+						message+=hitlimitscount;
+						message+=" and only completed\n ";
+						message+=startnum+1;
+						message+=" starts. Maybe this is enough for you?\n You can change optimization settings with the NumOpt command.\n----------------------------------------------------------------------------";
+						PrintMessage();
+						startnum=randomstarts+1; // So we'll stop the run
+					}
+				}
+				else {
+					if (detailedoutput==false) {
+						ProgressBar(0);
+					}			
+				}
+			}
+			else if (optimizationalgorithm==2) { //do simulated annealing
+			//This uses the algorithm from the GSL siman.c, though completely rewritten
+			//use info from example:
+//			int ntries=200;             /* how many points do we try before stepping */
+				int iters_fixed_t=200;      /* how many iterations for each T? */
+				double K=1.0;                   /* Boltzmann constant */
+				double mu_t=1.1;              /* damping factor for temperature */
+				double t_min=stoppingprecision;
+				gsl_vector *x = gsl_vector_calloc (np);
+				double lastlikelihood=GSL_POSINF;
+				int numTEststarts=50;
+				gsl_vector *initiallikelihoodscores=gsl_vector_calloc(numTEststarts);
+				for (int Tstartrep=0; Tstartrep<numTEststarts; Tstartrep++) { //this gives us an estimate of what a good starting T would be
+					lastlikelihood=GSL_POSINF;
+					while(isinf(lastlikelihood)) {
+						for (int i=0; i<numberoffreerates; i++) {
+							gsl_vector_set (x,i,GSL_MIN(gsl_ran_exponential (r,0.5),gsl_ran_flat(r,0,1) )); //starting rate
+							startingvalues[startnum][i]=gsl_vector_get(x,i);
+						}
+						for (int i=numberoffreerates; i<numberoffreerates+numberoffreefreqs; i++) {  
+							gsl_vector_set (x,i,(1.0/localnumbercharstates)); //starting freqs are equal
+							startingvalues[startnum][i]=gsl_vector_get(x,i);			
+						}
+						if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
+							for (int i=0; i<x->size; i++) {
+								gsl_vector_set(x,i,log(gsl_vector_get(x,i)));
+							}
+						}
+						
+						lastlikelihood=GetDiscreteCharLnL(x);
+					}
+					gsl_vector_set(initiallikelihoodscores,Tstartrep,lastlikelihood);
+				}
+				double t_initial=2.0*(gsl_vector_max(initiallikelihoodscores)-gsl_vector_min(initiallikelihoodscores));       /* initial temperature */
+				
+				double T=t_initial;
+				while (T>=t_min) {
+					for (int j=0;j<iters_fixed_t;j++) {
+						gsl_vector * newx=gsl_vector_calloc(numberoffreeparameters);
+						gsl_vector_memcpy(newx,x);
+						int i=int(gsl_ran_flat(r,0,numberoffreeparameters)); //changes only one parameter, we pick it randomly
+						if (i<numberoffreerates) { //must be changing a rate; rates must be >=0 but no upper bound, so use an exponential distribution
+							gsl_vector_set(newx,i,0.99*gsl_vector_get(newx,i)+0.01*gsl_ran_exponential (r,1.0/gsl_vector_get(newx,i)));
+						}
+						else {
+							double p[numberoffreefreqs+1];
+							unsigned int n[numberoffreefreqs+1];
+							double totalfreq=0;
+							for (int j=0;j<numberoffreefreqs;j++) {
+								p[j]=gsl_vector_get(x,j);
+								totalfreq+=p[j];
+							}
+							p[numberoffreefreqs]=1.0-totalfreq;
+							int multinomialsamples=250;
+							gsl_ran_multinomial (r, numberoffreefreqs+1, multinomialsamples, p, n); //modify the state freqs slightly
+							for (int j=numberoffreerates;j<numberoffreeparameters;j++) {
+								gsl_vector_set(newx,j,(1.0*n[j-numberoffreerates])/(1.0*multinomialsamples));
+							}	
+						}
+						if (detailedoutput) {
+							cout<<j<<endl<<"\t";
+							for (int j=0;j<numberoffreeparameters;j++) {
+								cout<<gsl_vector_get(x,j)<<"\t";
+							}
+							cout<<endl<<"\t";
+							for (int j=0;j<numberoffreeparameters;j++) {
+								cout<<gsl_vector_get(newx,j)<<"\t";
+							}
+							
+						}
+						double newlikelihood=GetDiscreteCharLnL(newx);
+						if(isinf(T)) {
+							T=0.5*newlikelihood;
+						}
+						if (newlikelihood<lastlikelihood || ( gsl_rng_uniform(r) > ((newlikelihood-lastlikelihood)/(K * T))) ) {
+						//take the move
+							gsl_vector_memcpy(x,newx);
+							lastlikelihood=newlikelihood;
+							if (newlikelihood<bestdiscretelikelihood) {
+								gsl_vector_memcpy(results,newx);
+								bestdiscretelikelihood=newlikelihood;
+								gsl_matrix_swap(currentdiscretecharQmatrix,optimaldiscretecharQmatrix);
+								gsl_vector_swap(currentdiscretecharstatefreq,optimaldiscretecharstatefreq);
+							}
+						}
+						if(detailedoutput) {
+							cout<<endl<<"\t"<<T<<" "<<newlikelihood<<" "<<lastlikelihood<<" ";
+							for (int i=0;i<numberoffreeparameters;i++) {
+								cout<<gsl_vector_get(newx,i)<<" ";
+							}
+							cout<<endl;
+						}
+					}
+					T /= mu_t;
+				}
+				
+				for (int parameternumber=0; parameternumber<numberoffreeparameters; parameternumber++) {
+					if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
+						estimates[startnum][parameternumber]=exp(gsl_vector_get(x,parameternumber));
+					}	
+					else {
+						estimates[startnum][parameternumber]=gsl_vector_get(x,parameternumber);
+					}
+				}
+				if (detailedoutput==false) {
+					ProgressBar(0);
+				}	
+				gsl_vector_free(x);
+			}
+		}
+		
+		if (hitlimitscount>0) {
+			if (redobad) {
+				message="\n----------------------------------------------------------------------------\n WARNING: For ";
+				message+=randomstarts;
+				message+=" desired completed runs, I had to do ";
+				message+=hitlimitscount;
+				message+=" starts total.\n This could suggest that you should change some NumOpt options\n (\"numopt ?\" for help).\n----------------------------------------------------------------------------";
+			}
+			else {
+				message="\n----------------------------------------------------------------------------\n WARNING: Out of ";
+				message+=randomstarts;
+				message+=" optimization starts, ";
+				message+=hitlimitscount;
+				if (hitlimitscount==1) {
+					message+=" was ";
+				}
+				else {
+					message+=" were ";
+				}
+				message+="stopped by hitting\n  the maximum # of iterations. This means that those replicates\n  may not even have hit the local maximum.\n\n  You can increase the maximum number of iterations or decrease the\n  precision with the NumOpt command. You could also consider\n  increasing the number of random starts using that same command.\n\n  If this happened on a small proportion of replicates, though,\n  or if the precision (below) is good enough, don't worry about it.\n----------------------------------------------------------------------------";
+			}
+			if (detailedoutput) {
+				PrintMessage();
+			}
+			else if ((randomstarts-hitlimitscount)<10 && (hitlimitscount/randomstarts)>.1) {
+				PrintMessage();
+			}
+		}
+		for (int position=0; position<np; position++) {
+			gsl_vector_set(finalvector,position,gsl_vector_get(results,position));
+			double paramestimate[randomstarts];
+			for (int startnumber=0;startnumber<randomstarts;startnumber++) {
+				paramestimate[startnumber]=estimates[startnumber][position];
+			}
+			gsl_vector_set(finalvector,position+np,gsl_stats_sd(paramestimate,1,randomstarts));
+		}
+		gsl_vector_free(results);
+	}
+else {
+		gsl_vector* emptyvector=gsl_vector_calloc(1);
+		bestdiscretelikelihood=GetDiscreteCharLnL(emptyvector);	
+		gsl_matrix_swap(currentdiscretecharQmatrix,optimaldiscretecharQmatrix);
+		gsl_vector_swap(currentdiscretecharstatefreq,optimaldiscretecharstatefreq);
+		gsl_vector_free(emptyvector);
+}
+
+/*if (globalbesthadfixedzerosorones) {
+	message="\n--------------------------------------------------------------------------------------------\n";
+	message+="Note that the best model estimates had some free parameter estimates fixed to zero or one;\n";
+	message+="you may get a more precise estimate of other parameters by inputing such a model (but\n ";
+	message+="use the current number of free parameters when calculating AIC/AICc).\n";
+	message+="--------------------------------------------------------------------------------------------";
+	PrintMessage();
+}*/
+	gsl_vector_set(finalvector,(2*np),bestdiscretelikelihood);
+	//cout<<"Best rate matrix=\n";
+	//PrintMatrix(optimaldiscretecharQmatrix);
+	return finalvector;
+}
+
+/*double BROWNIE::E_discretegeneral(void *xp) {
+	gsl_vector * inputvariables=gsl_vector_calloc(numberoffreeparameters);
+	double *params = (double *) xp;
+	for (int i=0;i++;i<numberoffreeparameters) {
+		gsl_vector_set(inputvariables,i,params[i]);
+	}
+	double E=GetDiscreteCharLnL(inputvariables);
+	gsl_vector_free(inputvariables);
+	return E;
+}
+
+double BROWNIE::M_discretegeneral(void *xp, void *yp)
+{
+	double *params1 = (double *) xp, *params2 = (double *) yp;
+	double distance = 0;
+	int i;
+	for (i = 0; i < numberoffreeparameters; ++i) {
+		distance += GSL_MAX(params1[i],params2[i])-GSL_MAX(params1[i],params2[i]);
+	}
+	return distance;
+}
+
+void BROWNIE::S_discretegeneral(const gsl_rng * r, void *xp, double step_size)
+{
+	double old_x = *((double *) xp);
+	double new_x=old_x;
+	step_size=0;
+	int i=int(gsl_ran_flat(r,0,numberoffreeparameters)); //changes only one parameter, we pick it randomly
+	if (i<numberoffreerates) { //must be changing a rate; rates must be >=0 but no upper bound, so use an exponential distribution
+		new_x[i]=0.9*old_x[i]+0.1*gsl_ran_exponential (r,1.0/old_x[i]);
+	}
+	else {
+		double p[numberoffreefreqs+1];
+		int n[numberoffreefreqs+1];
+		double totalfreq=0;
+		for (int j=0;j++;j<numberoffreefreqs) {
+			p[j]=old_x[j];
+			totalfreq+=old_x[j];
+		}
+		totalfreq[numberoffreefreqs]=1.0-totalfreq;
+		int multinomialsamples=250;
+		gsl_ran_multinomial (r, numberoffreefreqs+1, multinomialsamples, p, n); //modify the state freqs slightly
+		for (int j=numberoffreerates;j++;j<numberoffreeparameters) {
+			new_x[j]=(1.0*n[j-numberoffreerates])/(1.0*multinomialsamples);
+		}	
+	}
+	
+	memcpy(xp, &new_x, sizeof(new_x));
+	
+}
+*/
+
+//Calculates the joint ML mapping of ancestral states of a discrete on the tree, using the Pupko et al 2000 algorithm. Returns a pointer to the root of new tree with 
+//ML  joint estimates of state orders and state times inferred; node labels give the reconstructed states. If breaksperbranch==0, each branch gets
+//just one state assigned; if breaks per branch>0, extra nodes with degree 2 are introduced on the branch and states reconstructed at these nodes;
+//this allows for a branch to be partly in one state and then change to another (if a branch starts in state 0, and ends in state 1, and the 0->1
+//rate is lower than the 1->0 rate, for example, this will allow most of the branch to be reconstructed as having state 0).
+NodePtr BROWNIE::EstimateMLDiscreteCharJointAncestralStates(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector, int breaksperbranch) {
+	double lnL=0.0;
+	double L=0;
+	map<Node*, vector<vector<double> > > Lvector; //need vector of vectors to deal with breaks per branch
+	map<Node*, vector<vector<int> > > Cvector; // gives C vector, as in Pupko et al algorithm
+	//Tree T=intrees.GetIthTree(chosentree-1);
+	Tree *Tptr=&(intrees.Trees[chosentree-1]);
+	(*Tptr).Update();
+	(*Tptr).GetNodeDepths();
+	//(*Tptr).Draw(cout);
+	//Tree OldFormat=(*Tptr);
+	NodeIterator <Node> n ((*Tptr).GetRoot()); //Goes from tips down
 	NodePtr currentnode = n.begin();
-	for (int i=0;i<ancestralstatevector->size;i++) {
-		(stateprobatnodes[T.GetRoot()]).push_back(gsl_vector_get(ancestralstatevector,i));
+	while (currentnode)
+	{
+		double eachsegmentlength=(currentnode->GetEdgeLength())/(1.0*(breaksperbranch+1)); //adding breaksperbranch nodes of degree 2 divides the branch into breaksperbranch+1 segments
+		gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,eachsegmentlength);
+		if (currentnode->IsLeaf() ) {
+			for (int breaknum=0;breaknum<(breaksperbranch+1);breaknum++) { //initialize the vectors
+				vector<double> tempdouble;
+				vector<int> tempint;
+				for(int statepos=0;statepos<ancestralstatevector->size;statepos++) {
+					tempdouble.push_back(0.0);
+					tempint.push_back(0);
+				}
+				(Lvector[currentnode]).push_back(tempdouble);
+				(Cvector[currentnode]).push_back(tempint);
+			}
+			for (int breaknum=0;breaknum<(breaksperbranch+1);breaknum++) { //Break nums are numbered from the tip down
+				if (breaknum==0) { //means we're at the tip
+					int statenumber=discretecharacters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),discretechosenchar); //NOTE: for discrete chars, the number starts at 0
+					for(int i=0;i<ancestralstatevector->size;i++) {
+						(Cvector[currentnode])[breaknum][i]=statenumber; //we always must end up with the observed state
+						(Lvector[currentnode])[breaknum][i]=(gsl_matrix_get(Pmatrix,i,statenumber));
+					}
+				}
+				else { //at one of the degree two nodes on this "edge"
+					for(int i=0;i<ancestralstatevector->size;i++) {
+						double bestProb=0.0;
+						int bestJ=-1;
+						for(int j=0;j<ancestralstatevector->size;j++) {
+							double  currentProb=(gsl_matrix_get(Pmatrix,i,j))*((Lvector[currentnode])[breaknum-1][j]); //Modify Pupko algorithm 2a: Lz(i)=maxj Pij(tz) x Lx(j)
+							if (currentProb>bestProb) {
+								bestProb=currentProb;
+								bestJ=j;
+							}
+						}
+						(Cvector[currentnode])[breaknum][i]=bestJ;
+						(Lvector[currentnode])[breaknum][i]=bestProb;
+					}
+				}
+			}
+		}
+		else if (currentnode!=(*Tptr).GetRoot()) { //must be an internal node, but not the root
+			for (int breaknum=0;breaknum<(breaksperbranch+1);breaknum++) { //initialize the vectors
+				vector<double> tempdouble;
+				vector<int> tempint;
+				for(int statepos=0;statepos<ancestralstatevector->size;statepos++) {
+					tempdouble.push_back(0.0);
+					tempint.push_back(0);
+				}
+				(Lvector[currentnode]).push_back(tempdouble);
+				(Cvector[currentnode]).push_back(tempint);
+			}
+			for (int breaknum=0;breaknum<(breaksperbranch+1);breaknum++) { //Break nums are numbered from the tip down
+				if (breaknum==0) { //means we're at the node of degree>2
+					for(int i=0;i<ancestralstatevector->size;i++) {
+						double bestProb=0.0;
+						int bestJ=-1;
+						for(int j=0;j<ancestralstatevector->size;j++) {
+							double  currentProb=(gsl_matrix_get(Pmatrix,i,j));
+							NodePtr descnode=currentnode->GetChild();
+							while (descnode!=NULL) { 
+								currentProb*=((Lvector[descnode])[breaksperbranch][j]); //Get the likelihood of state j at the earliest examined node on each of the descendant branches
+								descnode=descnode->GetSibling(); //we're going to look at all descendant subtrees (even in case of polytomies)
+							}
+							if (currentProb>bestProb) {
+								bestProb=currentProb;
+								bestJ=j;
+							}
+						}
+						(Cvector[currentnode])[breaknum][i]=bestJ;
+						(Lvector[currentnode])[breaknum][i]=bestProb;
+					}
+				}
+				else { //at one of the degree two nodes on this "edge"
+					for(int i=0;i<ancestralstatevector->size;i++) {
+						double bestProb=0.0;
+						int bestJ=-1;
+						for(int j=0;j<ancestralstatevector->size;j++) {
+							double  currentProb=(gsl_matrix_get(Pmatrix,i,j))*((Lvector[currentnode])[breaknum-1][j]); //Modify Pupko algorithm 2a: Lz(i)=maxj Pij(tz) x Lx(j)
+							if (currentProb>bestProb) {
+								bestProb=currentProb;
+								bestJ=j;
+							}
+						}
+						(Cvector[currentnode])[breaknum][i]=bestJ;
+						(Lvector[currentnode])[breaknum][i]=bestProb;
+					}
+				}
+			}
+		}
+		else { //hooray! at root
+			double bestProb=0.0;
+			int bestK=-1;
+			for(int k=0;k<ancestralstatevector->size;k++) {
+				double currentProb=gsl_vector_get(ancestralstatevector,k);
+				NodePtr descnode=currentnode->GetChild();
+				while (descnode!=NULL) { 
+					currentProb*=((Lvector[descnode])[breaksperbranch][k]); //Get the likelihood of state j at the earliest examined node on each of the descendant branches
+					descnode=descnode->GetSibling(); //we're going to look at all descendant subtrees (even in case of polytomies)
+				}
+				if (currentProb>bestProb) {
+					bestProb=currentProb;
+					bestK=k;
+				}
+			}
+			//message="LnLikelihood of this reconstruction is ";
+			//message+=log(bestProb);
+			//PrintMessage();
+			nxsstring AncStateLabel="";
+			AncStateLabel+=bestK;
+			currentnode->SetLabel(AncStateLabel);
+		}
+		currentnode = n.next();
+		gsl_matrix_free(Pmatrix);
+	}
+	
+	//Now, back up the tree
+	map<Node*, nxsstring> NewLabels;
+	map<Node*, nxsstring> SimmapLabels;
+	map<Node*, nxsstring> OriginalLabels;
+	PreorderIterator <Node> m ((*Tptr).GetRoot()); //Goes from root up
+	currentnode = m.begin();
+	while (currentnode)
+	{
+		if (currentnode!=(*Tptr).GetRoot() ) {
+			nxsstring newlabeltext="";
+			nxsstring simmaplabeltext="";
+			nxsstring oldlabeltext="";
+			if (currentnode->IsLeaf()) {
+				newlabeltext+=currentnode->GetLabel();
+				simmaplabeltext+=currentnode->GetLabel();
+				oldlabeltext+=currentnode->GetLabel();
+			}
+			newlabeltext+="[&S "; //Has list of states on subtending branch
+			simmaplabeltext+=":{";
+			double eachsegmentlength=(currentnode->GetEdgeLength())/(1.0*(breaksperbranch+1));
+			double elapsedtime=0.0;
+			int numchanges=0;
+			vector<int> stateordervector; 
+			vector<double> statetimesvector;
+			vector<double> modelvector(maxModelCategoryStates,0.0);
+			int i=-1;
+			int j=-1;
+			for (int breaknum=breaksperbranch;breaknum>=0;breaknum--) { //Break nums are numbered from the tip down, we want to go from the bottom up
+				if (breaknum==breaksperbranch) { //at the rootmost interval
+					i=atoi(((currentnode->GetAnc())->GetLabel()).c_str()); //The label has the last state
+				}
+				j=(Cvector[currentnode])[breaknum][i];
+				//stateordervector.push_back(j);
+				//statetimesvector.push_back(eachsegmentlength);
+				modelvector[j]+=eachsegmentlength;
+				if (i!=j) { //There's been a change of state
+					if (numchanges>0) {
+						newlabeltext+=",";
+						simmaplabeltext+=":";
+					}
+					newlabeltext+=i;
+					newlabeltext+=":";
+					newlabeltext+=elapsedtime+(0.5*eachsegmentlength);
+					stateordervector.push_back(i);
+					statetimesvector.push_back(elapsedtime+(0.5*eachsegmentlength));
+					simmaplabeltext+=i;
+					simmaplabeltext+=",";
+					simmaplabeltext+=elapsedtime+(0.5*eachsegmentlength);
+					elapsedtime=0.5*eachsegmentlength;
+					numchanges++;
+				}
+				else {
+					elapsedtime+=eachsegmentlength;
+				}
+				i=j;
+				if (breaknum==0 && !(currentnode->IsLeaf())) { //change labels to include ancestral state
+					nxsstring AncStateLabel="";
+					AncStateLabel+=j;
+					currentnode->SetLabel(AncStateLabel);
+				}
+				if (breaknum==0) {
+					if (numchanges>0) {
+						newlabeltext+=",";	
+						simmaplabeltext+=":";
+					}
+					newlabeltext+=j;
+					newlabeltext+=":";
+					newlabeltext+=elapsedtime;
+					newlabeltext+="]";
+					stateordervector.push_back(j);
+					statetimesvector.push_back(elapsedtime);
+					simmaplabeltext+=j;
+					simmaplabeltext+=",";
+					simmaplabeltext+=elapsedtime;
+					simmaplabeltext+="}";
+				}
+			}
+			currentnode->SetStateOrder(stateordervector);
+			currentnode->SetStateTimes(statetimesvector);
+			currentnode->SetModelCategory(modelvector);
+			if (debugmode) {
+				cout<<"SetModelCategory(";
+				for (int i=0;i<modelvector.size();i++) {
+					cout<<" "<<modelvector[i];
+				}
+				cout<<" )"<<endl;
+				vector<double> returnedmodelvector(currentnode->GetModelCategory());
+				cout<<"GetModelCategory(";
+				for (int i=0;i<returnedmodelvector.size();i++) {
+					cout<<" "<<returnedmodelvector[i];
+				}
+				cout<<" )"<<endl;
+				
+				
+			}
+			NewLabels[currentnode]=newlabeltext;
+			SimmapLabels[currentnode]=simmaplabeltext;
+			OriginalLabels[currentnode]=oldlabeltext;
+			if (debugmode) {
+				cout<<"Node "<<currentnode<<" "<<currentnode->GetLabel()<<endl<<"\tState vectors: ";
+				for (int vectorpos=0;vectorpos<stateordervector.size();vectorpos++) {
+						cout<<stateordervector[vectorpos]<<":"<<statetimesvector[vectorpos]<<" ";
+				}
+				cout<<endl;
+				for (int  vectorpos=0;vectorpos<modelvector.size();vectorpos++) {
+					cout<<modelvector[vectorpos]<<" ";
+				}
+				cout<<endl;
+				cout<<"NewLabel = "<<newlabeltext<<" NewLabels.size()="<<NewLabels.size()<<endl<<"SimmapLabel = "<<simmaplabeltext<<" SimmapLabels.size()="<<SimmapLabels.size()<<endl;
+			}
+
+		}
+		currentnode = m.next();
+	}
+	(*Tptr).SetEdgeLengths(true);
+//	OldFormat.SetEdgeLengths(true);
+//	OldFormat.Update();
+//	OldFormat.GetNodeDepths();
+//	OldFormat.Draw(cout);
+	(*Tptr).Update();
+	(*Tptr).GetNodeDepths();
+	//(*Tptr).Draw(cout);
+	(*Tptr).SetInternalLabels(true);
+	PreorderIterator <Node> q ((*Tptr).GetRoot()); //Goes from root up
+	currentnode = q.begin();
+	if(debugmode)  {
+		cout<<" NewLabels.size()="<<NewLabels.size()<<endl<<" SimmapLabels.size()="<<SimmapLabels.size()<<endl;
 	}
 	while (currentnode)
 	{
-		if (currentnode!=T.GetRoot() && !currentnode->IsLeaf()) {
-			cout<<"RateMatrix is\n"<<gsl_matrix_get(RateMatrix,0,0)<<"\t"<<gsl_matrix_get(RateMatrix,0,1)<<"\n"<<gsl_matrix_get(RateMatrix,1,0)<<"\t"<<gsl_matrix_get(RateMatrix,1,1)<<endl;
-			gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,currentnode->GetEdgeLength());
-			for(int j=0;j<ancestralstatevector->size;j++) {
-				double probofstatej=0;
-				for (int i=0;i<ancestralstatevector->size;i++) {
-					probofstatej+=((stateprobatnodes[currentnode->GetAnc()])[i])*gsl_matrix_get(Pmatrix,i,j);
+		if (currentnode!=(*Tptr).GetRoot()) {
+			currentnode->SetLabel(NewLabels[currentnode]);
+			if(debugmode) {
+				cout<<"setting node "<<currentnode<<" to label "<<NewLabels[currentnode]<<endl;
+				vector<double> returnedmodelvector(currentnode->GetModelCategory());
+				cout<<"GetModelCategory(";
+				for (int i=0;i<returnedmodelvector.size();i++) {
+					cout<<" "<<returnedmodelvector[i];
 				}
-				(stateprobatnodes[currentnode]).push_back(probofstatej);
+				cout<<" )"<<endl;
+				
 			}
 		}
-		else if (currentnode!=T.GetRoot() && currentnode->IsLeaf()) {
-			int statenumber=characters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),chosenchar);
-			cout<<"RateMatrix is\n"<<gsl_matrix_get(RateMatrix,0,0)<<"\t"<<gsl_matrix_get(RateMatrix,0,1)<<"\n"<<gsl_matrix_get(RateMatrix,1,0)<<"\t"<<gsl_matrix_get(RateMatrix,1,1)<<endl;
-			gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,currentnode->GetEdgeLength());
-			for(int j=0;j<ancestralstatevector->size;j++) {
-				double probofstatej=0;
-				if (j==statenumber) {
-					for (int i=0;i<ancestralstatevector->size;i++) {
-						probofstatej+=((stateprobatnodes[currentnode->GetAnc()])[i])*gsl_matrix_get(Pmatrix,i,j);
-					}
-				} 
-				(stateprobatnodes[currentnode]).push_back(probofstatej);
-				lnL+=log(probofstatej);
-			}
-		}
-		currentnode = n.next();
+		currentnode = q.next();
 	}
-	return lnL;
+	((*Tptr).GetRoot())->SetLabel("");
+	(*Tptr).Update();
+	(*Tptr).GetNodeDepths();
+	cout<<"tree input"<<chosentree<<" = ";
+	(*Tptr).WriteNoQuote(cout);
+	cout<<"\n";
+	if( logf_open ) {
+		logf<<"begin trees;\n[reconstruction of ancestral states]\ntree input"<<chosentree<<" = ";
+		(*Tptr).WriteNoQuote(logf);
+		logf<<"\nend;\n";
+		
+	}
+	
+	currentnode = q.begin();
+	while (currentnode)
+	{
+		if (currentnode!=(*Tptr).GetRoot()) {
+			currentnode->SetLabel(SimmapLabels[currentnode]);
+			if(debugmode) {
+				cout<<"setting node "<<currentnode<<" to label "<<SimmapLabels[currentnode]<<endl;
+				vector<double> returnedmodelvector(currentnode->GetModelCategory());
+				cout<<"GetModelCategory(";
+				for (int i=0;i<returnedmodelvector.size();i++) {
+					cout<<" "<<returnedmodelvector[i];
+				}
+				cout<<" )"<<endl;
+				
+			}
+			
+		}
+		currentnode = q.next();
+	}
+	(*Tptr).Update();
+	(*Tptr).GetNodeDepths();
+	(*Tptr).SetEdgeLengths(false); //So it won't print out the edge lengths;
+	cout<<"tree input"<<chosentree<<" = ";
+	(*Tptr).WriteNoQuote(cout);
+	cout<<endl;
+	(*Tptr).Draw(cout);
+	cout<<"\n";
+	if( logf_open ) {
+		logf<<"begin trees;\n[reconstruction of ancestral states]\ntree input"<<chosentree<<" = ";
+		(*Tptr).WriteNoQuote(logf);
+		logf<<"\nend;\n";
+		
+	}
+	//Now go back to original form:
+	currentnode = q.begin();
+	while (currentnode)
+	{
+		if (currentnode!=(*Tptr).GetRoot()) {
+			currentnode->SetLabel(OriginalLabels[currentnode]);
+			if(debugmode) {
+				cout<<"setting node "<<currentnode<<" to label "<<SimmapLabels[currentnode]<<endl;
+				vector<double> returnedmodelvector(currentnode->GetModelCategory());
+				cout<<"GetModelCategory(";
+				for (int i=0;i<returnedmodelvector.size();i++) {
+					cout<<" "<<returnedmodelvector[i];
+				}
+				cout<<" )"<<endl;				
+			}
+			
+		}
+		currentnode = q.next();
+	}
+	
+	(*Tptr).Update();
+	(*Tptr).GetNodeDepths();
+	(*Tptr).SetEdgeLengths(true); //Since it has edge lengths;
+	//(*Tptr).Draw(cout);
+	
+	
+	/*ContainingTree A;
+	A.SetRoot((*Tptr).CopyOfSubtree((*Tptr).GetRoot()));
+	A.Update();
+	A.GetNodeDepths();
+	A.ReportTreeHealth();
+*/
+
+	
+	return (*Tptr).GetRoot();	
+}
+
+
+//Calculates the likelihood of discrete character discretechosenchar on tree chosentree
+double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector)
+{
+	double neglnL=0;
+	double Prob=0;
+	if (variablecharonly) {
+		Prob=CalculateDiscreteCharProbAllConstant(RateMatrix,ancestralstatevector);
+	}			
+	int startingdiscretechosenchar=discretechosenchar;
+	int endingdiscretechosenchar=discretechosenchar+1;
+	if (allchar) {
+		startingdiscretechosenchar=0;
+		endingdiscretechosenchar=discretecharacters->GetNChar();
+	}
+	int olddiscretechosenchar=discretechosenchar;
+	for (discretechosenchar=startingdiscretechosenchar;discretechosenchar<endingdiscretechosenchar;discretechosenchar++) {
+		if ((discretecharacters->GetObsNumStates(discretechosenchar))>1 || variablecharonly==false) { //so, ignore invariant characters if variablecharonly==true
+			double L=0;
+			map<Node*, vector<double> > stateprobatnodes;
+			Tree T=intrees.GetIthTree(chosentree-1);
+			NodeIterator <Node> n (T.GetRoot()); //Goes from tips down
+			NodePtr currentnode = n.begin();
+			while (currentnode)
+			{
+				if (currentnode->IsLeaf() ) {
+					int statenumber=discretecharacters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),discretechosenchar); //NOTE: for discrete chars, the number starts at 0
+					for(int j=0;j<ancestralstatevector->size;j++) {
+						double probofstatej=0; //do all in straight prob, then convert to ln L
+						if (j==statenumber) {
+							probofstatej=1; 
+						}
+						(stateprobatnodes[currentnode]).push_back(probofstatej);
+					}
+				}
+				else { //must be an internal node, including the root
+					for(int i=0;i<ancestralstatevector->size;i++) { //do this for each possible state at the current node
+						NodePtr descnode=currentnode->GetChild();
+						double probofstatei=1;
+						while (descnode!=NULL) { 
+							gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,descnode->GetEdgeLength());
+							double probofthissubtree=0;
+							for(int j=0;j<ancestralstatevector->size;j++) {
+								probofthissubtree+=(gsl_matrix_get(Pmatrix,i,j))*((stateprobatnodes[descnode])[j]); //Prob of going from i to j on desc branch times the prob of the subtree with root state j
+							}
+							probofstatei*=probofthissubtree;
+							descnode=descnode->GetSibling(); //we're going to look at all descendant subtrees (even in case of polytomies)
+							gsl_matrix_free(Pmatrix);
+						}
+						(stateprobatnodes[currentnode]).push_back(probofstatei);
+					}
+				}
+				currentnode = n.next();
+				
+			}
+	//now, finish up by getting the weighted sum at the root
+			for (int i=0;i<ancestralstatevector->size;i++) {
+				L+=(gsl_vector_get(ancestralstatevector,i))*((stateprobatnodes[T.GetRoot()])[i]);
+			}
+			if (variablecharonly) {
+				L=L/(1.0-Prob); //after equation 3 in Lewis 2001 and equation 8 in Felsenstein 1992
+			}		
+			neglnL+=-1.0*log(L);
+		}
+	}
+	discretechosenchar=olddiscretechosenchar;
+	return neglnL;
+}
+
+//Calculates the likelihood of getting only constant characters (all 0, or all 1, or all...)
+double BROWNIE::CalculateDiscreteCharProbAllConstant(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector)
+{
+	double Prob=0;
+	for (int tipstate=0;  tipstate<localnumbercharstates; tipstate++) { //we loop over all possible tip states
+		double L=0;
+		map<Node*, vector<double> > stateprobatnodes;
+		Tree T=intrees.GetIthTree(chosentree-1);
+		NodeIterator <Node> n (T.GetRoot()); //Goes from tips down
+		NodePtr currentnode = n.begin();
+		while (currentnode)
+		{
+			if (currentnode->IsLeaf() ) {
+				int statenumber=tipstate; //we force all tips to have the same state
+				for(int j=0;j<ancestralstatevector->size;j++) {
+					double probofstatej=0; //do all in straight prob, then convert to ln L
+					if (j==statenumber) {
+						probofstatej=1; 
+					}
+					(stateprobatnodes[currentnode]).push_back(probofstatej);
+				}
+			}
+			else { //must be an internal node, including the root
+				for(int i=0;i<ancestralstatevector->size;i++) { //do this for each possible state at the current node
+					NodePtr descnode=currentnode->GetChild();
+					double probofstatei=1;
+					while (descnode!=NULL) { 
+						gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,descnode->GetEdgeLength());
+						double probofthissubtree=0;
+						for(int j=0;j<ancestralstatevector->size;j++) {
+							probofthissubtree+=(gsl_matrix_get(Pmatrix,i,j))*((stateprobatnodes[descnode])[j]); //Prob of going from i to j on desc branch times the prob of the subtree with root state j
+						}
+						probofstatei*=probofthissubtree;
+						descnode=descnode->GetSibling(); //we're going to look at all descendant subtrees (even in case of polytomies)
+						gsl_matrix_free(Pmatrix);
+					}
+					(stateprobatnodes[currentnode]).push_back(probofstatei);
+				}
+			}
+			currentnode = n.next();
+		}
+	//now, finish up by getting the weighted sum at the root
+		for (int i=0;i<ancestralstatevector->size;i++) {
+			L+=(gsl_vector_get(ancestralstatevector,i))*((stateprobatnodes[T.GetRoot()])[i]);
+		}
+		Prob+=L;
+	}
+	return Prob;
 }
 
 double BROWNIE::CalculateDiscreteLindy1(double rateA)
@@ -11583,7 +15202,7 @@ double BROWNIE::CalculateDiscreteLindy2(double rateA, double rateB)
 		gsl_matrix_set(ratematrixB,1,0,rateB);
 		gsl_matrix_set(ratematrixB,1,1,0.0-rateB);
 //		cout<<"ratematrixB now is is\n"<<gsl_matrix_get(ratematrixB,0,0)<<"\t"<<gsl_matrix_get(ratematrixB,0,1)<<"\n"<<gsl_matrix_get(ratematrixB,1,0)<<"\t"<<gsl_matrix_get(ratematrixB,1,1)<<endl;
-		int nchartotal=characters->GetNChar();
+		int nchartotal=discretecharacters->GetNChar();
 		for (int currentchar=1;currentchar<=nchartotal;currentchar++) {
 			//cout<<"rateA is "<<rateA<<endl;
 			map<Node*, vector<double> > stateprobatnodes;
@@ -11623,9 +15242,10 @@ double BROWNIE::CalculateDiscreteLindy2(double rateA, double rateB)
 //						cout<<"j="<<j<<" prob of state j="<<probofstatej<<endl;
 					}
 					stateprobatnodes[currentnode]=statesatthisnode;
+					gsl_matrix_free(Pmatrix);
 				}
 				else if (currentnode!=T.GetRoot() && currentnode->IsLeaf()) {
-					int statenumber=characters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),currentchar-1);
+					int statenumber=discretecharacters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),currentchar-1);
 					gsl_matrix * Pmatrix=gsl_matrix_calloc(2,2);
 					if ((currentnode->GetStateOrder())[0]==0) {
 						Pmatrix=ComputeTransitionProb(ratematrixA,currentnode->GetEdgeLength());
@@ -11644,6 +15264,7 @@ double BROWNIE::CalculateDiscreteLindy2(double rateA, double rateB)
 							//cout<<"For tip with state "<<statenumber<<" probofstate="<<probofstatej<<" prob at previousnode="<<statesatpreviousnode[statenumber]<<" -lnL total so far = "<<neglnL<<endl;
 						} 
 					}
+					gsl_matrix_free(Pmatrix);
 				}
 				currentnode = n.next();
 			}
@@ -11714,6 +15335,7 @@ gsl_matrix * BROWNIE::ComputeTransitionProb(gsl_matrix *RateMatrix, double brlen
 	gsl_eigen_nonsymmv_free(w);
 	gsl_vector_complex_free(eigenvalues);
 	gsl_matrix_complex_free(eigenvectors);
+	gsl_matrix_complex_free(eigenvaluematrix);
 	gsl_matrix_complex_free(inverseeigenvectorsstart);
 	gsl_matrix_complex_free(inverseeigenvectors);
 	gsl_matrix_complex_free(stepA);
@@ -11763,7 +15385,7 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
             // message+="\nTaxset       <taxset name>                        *All";
             // message+="\nFromRoot     No|Yes                               *No";
             message+="\n                                                 *Option is nonpersistent\n\n";
-            message+="This will allow assignment of different models on the specified intervals across all trees.\nFor example, to specify one rate parameter for the interval from the present to 50 MYA,\nanother rate parameter from 50 MYA to 65 MYA, and the first rate parameter again from 65 MYA\nto the root of the phylogeny:\n\n  Time Model\n   0     1\n   5     1\n   .     .\n  45     1\n__50_____1_\n| 50     2 |\n| 55     2 |\n| 60     2 |\n|_65_____2_|\n  65     1\n  70     1\n   .     .\n\none would type\n\nTimeslice splits=(50 65) models=(1 2 1);\n\nSplits specifies where one model changes to the other;\nthere should be one fewer split than there are intervals.\nEdges spanning a split are properly divided\n(so a given path may have more than one model).\n\nBy default, times are measured from the most recent taxon. \nTo specify that they should be measured from the root instead, specify fromroot=yes;\nThis becomes most important when the root node may be of different depths in different trees.\nNote that you are currently limited to only 9 splits (if this becomes a problem, email bcomeara@ucdavis.edu).";
+            message+="This will allow assignment of different models on the specified intervals across all trees.\nFor example, to specify one rate parameter for the interval from the present to 50 MYA,\nanother rate parameter from 50 MYA to 65 MYA, and the first rate parameter again from 65 MYA\nto the root of the phylogeny:\n\n  Time Model\n   0     1\n   5     1\n   .     .\n  45     1\n__50_____1_\n| 50     2 |\n| 55     2 |\n| 60     2 |\n|_65_____2_|\n  65     1\n  70     1\n   .     .\n\none would type\n\nTimeslice splits=(50 65) models=(1 2 1);\n\nSplits specifies where one model changes to the other;\nthere should be one fewer split than there are intervals.\nEdges spanning a split are properly divided\n(so a given path may have more than one model).\n\nBy default, times are measured from the most recent taxon. \nTo specify that they should be measured from the root instead, specify fromroot=yes;\nThis becomes most important when the root node may be of different depths in different trees.\nNote that you are currently limited to only 9 splits (if this becomes a problem, email brownie@brianomeara.info).";
             PrintMessage();
         }
         else if( token.Abbreviation("Splits") ) {
@@ -11833,6 +15455,7 @@ int main(int argc, char *argv[])
     T = gsl_rng_mt19937;
     r = gsl_rng_alloc (T);
     BROWNIE brownie;
+	//gsl_set_error_handler_off();
     bool inputfilegiven=false;
     if (argc>1) {
         for (int i = 1; i < argc; i++) {
@@ -11847,4 +15470,5 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
+
 

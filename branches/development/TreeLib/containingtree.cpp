@@ -449,6 +449,68 @@ void ContainingTree::ConvertTaxonNamesToRandomTaxonNumbers()
 void ContainingTree::NNI () {
 }
 
+//This function does an NNI over the edge below the given node. This node should not be the root node, a child of the root node, or a leaf. There are two possible NNIs for an edge that has each end node of degree 2, resolution=1 or resolution=2 selects which to return
+void ContainingTree::NonRandomNNIAtNode (int chosennodenumber, int resolution) { 
+	
+	FindAndSetRoot();
+	NodeIterator <Node> n (GetRoot());
+    NodePtr currentnode = n.begin();
+    NodePtr SelectedEdgeTipwardNode;
+	int NodesTouched=0;
+    bool selectedanode=false;
+    while (currentnode)
+    {
+        NodesTouched++;
+        //  cout<<chosennodenumber<<"\t"<<NodesTouched<<"\t"<<GetNumNodes()<<endl;
+        if (chosennodenumber==NodesTouched) { // We've found the node to split on
+            if (currentnode!=GetRoot()) {
+                SelectedEdgeTipwardNode=currentnode;
+                selectedanode=true;
+                break;
+            }
+            else {
+                chosennodenumber++; //Don't want to split on the root node
+                                    //  cout<<"Chosen node was root; choosing next instead"<<endl;
+            }
+        }
+        currentnode = n.next();
+    }
+    if (selectedanode==false) {
+        cout<<"Error -- didn't select a node for a break"<<endl<<endl;
+    }
+	
+	if (resolution==1) {
+		NodeToBreak=SelectedEdgeTipwardNode->GetChild();
+	}
+	else {
+		NodeToBreak=(SelectedEdgeTipwardNode->GetChild())->GetSibling();
+	}
+	NodePtr NodeToAdd;
+	if((SelectedEdgeTipwardNode->GetAnc()->GetChild())==SelectedEdgeTipwardNode) {
+		NodeToAdd=(SelectedEdgeTipwardNode->GetAnc()->GetChild())->GetSibling();
+	}
+	else {
+		NodeToAdd=(SelectedEdgeTipwardNode->GetAnc()->GetChild());
+	}
+	if( (SelectedEdgeTipwardNode->GetDegree() > 2) || ((SelectedEdgeTipwardNode->GetAnc())->GetDegree() > 2) ) {
+		cout<<"Error: this edge has a multifurcation at at least one end";
+		DeleteSubtendingEdge(NodeToBreak); // just to break the tree
+	}
+	else if (NodeToBreak == NULL || NodeToAdd == NULL) {
+		cout<<"Error: NodeToBreak "<<NodeToBreak<<" or NodeToAdd "<<NodeToAdd<<" is NULL"<<endl;
+		ReportTreeHealth();
+	}
+	else {
+		DeleteSubtendingEdge(NodeToBreak);
+		NodePtr NewPosition=AddNodeToSubtendingEdge(NodeToAdd);
+		(NewPosition->GetChild())->SetSibling(NodeToBreak); //We know NewPosition has one child with no siblings as a result of how we created New Position
+		NodeToBreak->SetAnc(NewPosition);
+		NewPosition->IncrementDegree();
+		FindAndSetRoot();
+		Update();	
+	}
+}
+
 void ContainingTree::SPR () {
     //First, select a node to break under
     //cout<<endl<<"Now starting SPR"<<endl;

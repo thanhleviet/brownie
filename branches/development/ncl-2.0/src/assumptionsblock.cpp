@@ -406,9 +406,26 @@ void AssumptionsBlock::HandleTaxset( NexusToken& token )
         }
     }
     taxsets[complement_taxset_name] = complementtaxonnumbers;
+	isEmpty=false; //Since we've added two taxsets
 
 
 
+}
+
+//Added by BCO
+//Creates a taxset "All" containing all the taxa
+void AssumptionsBlock::MakeTaxsetAll() 
+{
+	int totalTaxa = taxa.GetNumTaxonLabels();
+    nxsstring new_taxset_name;
+    new_taxset_name="ALL";
+	IntSet newtaxonnumbers;
+    for (int i=0;i<totalTaxa;i++) {
+		newtaxonnumbers.insert(i);
+    }
+    taxsets[new_taxset_name] = newtaxonnumbers;
+	def_taxset = new_taxset_name;
+	isEmpty= false;
 }
 
 /**
@@ -424,7 +441,6 @@ void AssumptionsBlock::HandleTaxset( NexusToken& token )
 void AssumptionsBlock::Read( NexusToken& token )
 {
    isEmpty = false;
-
    // this should be the semicolon after the block name
    //
 	token.GetNextToken();
@@ -471,6 +487,8 @@ void AssumptionsBlock::Read( NexusToken& token )
          }
 		}
    }
+	//MakeTaxsetAll(); //added by BCO
+
 }
 
 /**
@@ -488,6 +506,7 @@ void AssumptionsBlock::Reset()
    def_taxset = "";
    def_charset = "";
    def_exset = "";
+   MakeTaxsetAll(); //Added by BCO
 }
 
 /**
@@ -528,13 +547,35 @@ void AssumptionsBlock::Report( std::ostream& out )
       IntSetMap::const_iterator taxsets_iter = taxsets.begin();
       if( taxsets.size() == 1 ) {
          out << "  1 taxon set defined:" << endl;
- 	      out << "    " << (*taxsets_iter).first << endl;
+ 	      out << "    " << (*taxsets_iter).first; //BCO took out a "<<endl"
+			//below added by BCO
+		  out << ": ";
+		  int totalTaxa = taxa.GetNumTaxonLabels();
+		  IntSet currenttaxonlist = GetTaxSet( (*taxsets_iter).first );
+		  for (int i=0;i<totalTaxa;i++) {
+			  if(currenttaxonlist.count(i)==1) {
+				  out<<i<<" ";
+			  }
+		  }
+		  out<<endl;
+		  //above added by BCO
+		  
       }
       else {
          out << "  " << taxsets.size() << " taxon sets defined:" << endl;
 	      for( ; taxsets_iter != taxsets.end(); taxsets_iter++ ) {
          	nxsstring nm = (*taxsets_iter).first;
    	      out << "    " << nm;
+		  //below added by BCO
+		  out << ": ";
+		  int totalTaxa = taxa.GetNumTaxonLabels();
+		  IntSet currenttaxonlist = GetTaxSet( nm );
+		  for (int i=0;i<totalTaxa;i++) {
+			  if(currenttaxonlist.count(i)==1) {
+				  out<<i<<" ";
+			  }
+		  }
+		  //above added by BCO
             if( nm == def_taxset )
             	out << " (default)";
             out << endl;

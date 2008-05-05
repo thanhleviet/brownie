@@ -290,6 +290,14 @@ public:
 #else
 	virtual void	Write (std::ostream &f);
 #endif
+	
+//Added by BCO
+#if defined __BORLANDC__ && (__BORLANDC__ < 0x0550)
+	virtual void	WriteNoQuote (ostream &f);
+#else
+	virtual void	WriteNoQuote (std::ostream &f);
+#endif
+	
 
 	NodePtr		operator[] (const int i) { return Nodes[i]; };
 	
@@ -327,7 +335,7 @@ std::vector<double>		ModelCategory;
 	int				count;
 
 	virtual void 		traverse (NodePtr p);
-
+	virtual void 		traversenoquote (NodePtr p); //Added by BCO
 	virtual void 		buildtraverse (NodePtr p);
    	virtual void 		copyTraverse (NodePtr p1, NodePtr &p2) const;
    	virtual void 		deletetraverse (NodePtr p);

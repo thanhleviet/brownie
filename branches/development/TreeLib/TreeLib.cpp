@@ -658,7 +658,7 @@ int Tree::Parse (const char *TreeDescr)
 						if (matchchar=='{') { //added by BCO
 							
 							//BCO wrote everything in this if statement
-							//Note that the simmap parser only deals with "morphological" data -- states should be integers, in other words. //BCO
+							//Note that the simmap parser only deals with discrete data -- states should be integers, in other words. //BCO
 							
 							vector<double> modelvector(maxModelCategoryStates,0.0); //maxModelCategoryStates is in TreeLib.h
 							vector<int> stateordervector; //added by BCO
@@ -852,6 +852,62 @@ void Tree::traverse (NodePtr p)
 				if ((p->GetAnc()->GetLabel() != "") && InternalLabels)
 				{
 					*treeStream << '\'' << NEXUSString (p->GetAnc()->GetLabel ()) << '\'';
+				}
+				if (EdgeLengths && (p->GetAnc () != Root))
+				{
+					*treeStream << ':' << p->GetAnc()->GetEdgeLength ();
+				}
+			}
+		}
+		traverse (p->GetSibling());
+	}
+	
+}
+
+//Added by BCO
+//------------------------------------------------------------------------------
+void Tree::WriteNoQuote (ostream &f)
+{
+	treeStream = &f;
+	traversenoquote (Root);
+	f << ";";
+}
+
+//Added by BCO
+//------------------------------------------------------------------------------
+void Tree::traversenoquote (NodePtr p)
+{
+	
+	if (p)
+	{
+		if (p->IsLeaf())
+		{
+			*treeStream << NEXUSString (p->GetLabel());
+			
+			if (EdgeLengths)
+			{
+				*treeStream << ':' << p->GetEdgeLength ();
+			}
+		}
+		else
+		{
+			*treeStream << "(";
+		}
+		
+		traverse (p->GetChild());
+		if (p->GetSibling())
+		{
+			*treeStream << ",";
+		}
+		else
+		{
+			if (p != Root)
+			{
+				*treeStream << ")";
+				// 29/3/96
+				if ((p->GetAnc()->GetLabel() != "") && InternalLabels)
+				{
+					*treeStream <<  NEXUSString (p->GetAnc()->GetLabel ()) ; //here's the change from traverse
 				}
 				if (EdgeLengths && (p->GetAnc () != Root))
 				{
@@ -1293,9 +1349,9 @@ void Tree::buildtraverse (NodePtr p)
 	if (p)
 	{
 		p->SetWeight (0);
-		p->SetModelCategory(vector<double>(1,1.0)); //added by BCO
+		/*p->SetModelCategory(vector<double>(1,1.0)); //added by BCO
 		p->SetStateOrder(vector<int>(1,0)); //Added by BCO
-		p->SetStateTimes(vector<double>(1,0.0)); //Added by BCO
+		p->SetStateTimes(vector<double>(1,0.0)); //Added by BCO*/
 		p->SetDegree (0);
 		buildtraverse (p->GetChild ());
 		buildtraverse (p->GetSibling ());
@@ -1303,9 +1359,9 @@ void Tree::buildtraverse (NodePtr p)
 		{
 			Leaves++;
 			p->SetWeight (1);
-			p->SetModelCategory(vector<double>(1,1.0)); //Added by BCO
+			/*p->SetModelCategory(vector<double>(1,1.0)); //Added by BCO
 			p->SetStateOrder(vector<int>(1,0)); //Added by BCO
-			p->SetStateTimes(vector<double>(1,0.0)); //Added by BCO
+			p->SetStateTimes(vector<double>(1,0.0)); //Added by BCO*/
 			
 		}
 		else
