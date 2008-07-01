@@ -1358,3 +1358,39 @@ void ContainingTree::ClearInternalLabels()
         currentnode = n.next();
     }
 }
+
+void ContainingTree::InitializeMissingBranchLengths()
+{
+	SetEdgeLengths(true);
+	getPathLengths(Root); //make sure we store the path lengths
+	float maxpathlength = GetMaxPathLength();
+	if (maxpathlength==0) { //there are no path lengths stored; initialize tree with all brlen = 1
+		NodeIterator <Node> n (GetRoot());
+		NodePtr currentnode = n.begin();
+		while (currentnode)
+		{
+			if ((currentnode->GetEdgeLength())==0) {
+				currentnode->SetEdgeLength(1.0);
+			}
+			currentnode = n.next();
+		}
+	}
+	else { //we have to be more clever
+		NodeIterator <Node> n (GetRoot());
+		NodePtr currentnode = n.begin();
+		while (currentnode)
+		{
+			if ((currentnode->GetEdgeLength())==0) {
+				float pathlength = currentnode->GetPathLength();
+				if (currentnode->IsLeaf()) { //is a leaf; we've done its ancestors
+					currentnode->SetEdgeLength(maxpathlength-pathlength);
+				}
+				else {
+					currentnode->SetEdgeLength(0.5*(maxpathlength-pathlength));
+				}
+			}
+			currentnode = n.next();
+		}
+		
+	}
+}

@@ -160,6 +160,8 @@ public:
     virtual NodePtr SelectNodeToReRootOn(int chosennodenum);
 
     virtual void ClearInternalLabels();
+	
+	virtual void InitializeMissingBranchLengths();
 
 
 };
