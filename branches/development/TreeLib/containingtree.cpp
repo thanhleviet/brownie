@@ -1361,6 +1361,7 @@ void ContainingTree::ClearInternalLabels()
 
 void ContainingTree::InitializeMissingBranchLengths()
 {
+	cout<<"InitializeMissingBranchLengths"<<endl;
 	SetEdgeLengths(true);
 	MarkNodes(false); //We'll mark the nodes below which the branch lengths have been changed
 	getPathLengths(Root); //make sure we store the path lengths
@@ -1400,6 +1401,7 @@ void ContainingTree::InitializeMissingBranchLengths()
 
 void ContainingTree::RandomlyModifySingleBranchLength(double markedmultiplier)
 {
+	cout<<"RandomlyModifySingleBranchLength"<<endl;
 	int numberofunmarkednodes=-2+2*GetNumLeaves();
 	int numberofmarkednodes=0;
 	NodeIterator <Node> n (GetRoot());

@@ -148,6 +148,7 @@ public:
     bool showtries;
     vector<ContainingTree> RawBestTrees; //Contains all the best trees with just species labels; cleared every time a better tree is found
     vector<ContainingTree> FormattedBestTrees; //Uses samples as labels. Is useful as this way you don't have to remember the convertsamplestospecies for each best tree
+	vector<ContainingTree> BestBranchlengthTreeForThisNextTree; //For optimizing branch lengths
     double bestscore;
 	double bestscorelocal;
         //We use a struct so we can pass one set of params (a VCV matrix and two vectors) to a multimin function
