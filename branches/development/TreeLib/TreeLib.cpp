@@ -882,8 +882,12 @@ void Tree::traversenoquote (NodePtr p)
 	{
 		if (p->IsLeaf())
 		{
-			*treeStream << NEXUSString (p->GetLabel());
-			
+			for (int i=0; i<(NEXUSString (p->GetLabel())).length(); i++) {
+				if ((NEXUSString (p->GetLabel()))[i]!= '\'') {
+					*treeStream <<(NEXUSString (p->GetLabel()))[i];
+				}
+			}
+			//*treeStream<<NEXUSString (p->GetLabel());
 			if (EdgeLengths)
 			{
 				*treeStream << ':' << p->GetEdgeLength ();
@@ -894,7 +898,7 @@ void Tree::traversenoquote (NodePtr p)
 			*treeStream << "(";
 		}
 		
-		traverse (p->GetChild());
+		traversenoquote (p->GetChild());
 		if (p->GetSibling())
 		{
 			*treeStream << ",";
@@ -915,7 +919,7 @@ void Tree::traversenoquote (NodePtr p)
 				}
 			}
 		}
-		traverse (p->GetSibling());
+		traversenoquote (p->GetSibling());
 	}
 	
 }

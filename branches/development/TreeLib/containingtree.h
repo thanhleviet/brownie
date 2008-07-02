@@ -163,7 +163,7 @@ public:
 	
 	virtual void InitializeMissingBranchLengths();
 
-
+	virtual void RandomlyModifySingleBranchLength(double markedmultiplier);
 };
 
 

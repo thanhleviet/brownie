@@ -97,6 +97,8 @@ public:
     int randomstarts;
 	nxsstring treefilename;
 	bool useCOAL;
+	double markedmultiplier;
+	int numbrlenadjustments;
 	map< vector<int>, int> quartetcounts;
 	map< vector<int>, int> qualifiedquartets;
 	vector<int> quartetspertaxon;

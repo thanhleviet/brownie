@@ -1362,6 +1362,7 @@ void ContainingTree::ClearInternalLabels()
 void ContainingTree::InitializeMissingBranchLengths()
 {
 	SetEdgeLengths(true);
+	MarkNodes(false); //We'll mark the nodes below which the branch lengths have been changed
 	getPathLengths(Root); //make sure we store the path lengths
 	float maxpathlength = GetMaxPathLength();
 	if (maxpathlength==0) { //there are no path lengths stored; initialize tree with all brlen = 1
@@ -1384,13 +1385,51 @@ void ContainingTree::InitializeMissingBranchLengths()
 				float pathlength = currentnode->GetPathLength();
 				if (currentnode->IsLeaf()) { //is a leaf; we've done its ancestors
 					currentnode->SetEdgeLength(maxpathlength-pathlength);
+					currentnode->SetMarked(true);
 				}
 				else {
 					currentnode->SetEdgeLength(0.5*(maxpathlength-pathlength));
+					currentnode->SetMarked(true);
 				}
 			}
 			currentnode = n.next();
 		}
 		
 	}
+}
+
+void ContainingTree::RandomlyModifySingleBranchLength(double markedmultiplier)
+{
+	int numberofunmarkednodes=-2+2*GetNumLeaves();
+	int numberofmarkednodes=0;
+	NodeIterator <Node> n (GetRoot());
+	NodePtr currentnode = n.begin();
+	while (currentnode)
+	{
+		if (currentnode->IsMarked()) {
+			numberofunmarkednodes--;
+			numberofmarkednodes++;
+		}
+		currentnode = n.next();
+	}
+	double probabilityperunmarked=1.0/(numberofunmarkednodes+markedmultiplier*numberofmarkednodes);
+	bool changedbrlen=false;
+	while (!changedbrlen) {
+		currentnode = n.begin();
+		while (currentnode)
+		{
+			double thresholdprobability=probabilityperunmarked;
+			if (currentnode->IsMarked()) {
+				thresholdprobability*=markedmultiplier;
+			}
+			if (gsl_ran_flat (r,0,1)<thresholdprobability) { //adjust brlen
+				currentnode->SetEdgeLength(gsl_ran_lognormal(r,currentnode->GetEdgeLength(),1.0));
+				changedbrlen=true;
+				break;
+			}
+			currentnode = n.next();
+		}
+		
+	}
+	
 }
