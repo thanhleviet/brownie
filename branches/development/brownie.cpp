@@ -270,6 +270,7 @@ void BROWNIE::FactoryDefaults()
     stoppingprecision=1e-7;
     randomstarts=15;
     treefilename="besttrees.tre";
+	useCOAL=false;
     badgtpcount=0;
     stepsize=.1;
 	npercent=0.95;
@@ -1161,6 +1162,13 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
            // message+="\nSteepest     No|Yes                                  No";
 			//message+="\nExhaustive   No|Yes                                  No";
             message+="\nShowTries    No|Yes                                  ";
+			message+="\nCOAL:        No|Yes                                  ";
+			if (useCOAL) {
+				message+="Yes";
+			}
+			else {
+				message+="No";
+			}
             message+="\n\nNReps: Number of random starting species trees to use";
             //message+="\nTimeLimit: Limit search to X seconds";
             //message+="\nClock: Count seconds for time limit using actual elapsed time ('Wall'->Clock on a wall) or CPU time"; //NOte to self: see discussion online of time() fn and clock() fn in C++
@@ -1175,6 +1183,7 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
            // message+="\nStatus: Output status of search to screen (and a log file, if open).";
            // message+="\nSteepest: Whether to look at all rearrangements and then take the best one or just take the first better one.";
 			message+="\nSubsample: How extensively to try taxon reassignments on leaf splits. \n\tA value of 1 means try all of the possible reassignments, \n\ta value of 2 means try the square root of all the possible assignments,\n\t3 means the cube root, etc. A higher number means a faster but less effective search.\n\tThe program won't let you try fewer than 10 assignments on average.";
+			message+="\nCOAL: Use Degnan's program COAL to optimize the likelihood of the species delimitation and tree rather than the semiparametric penalty function";
             PrintMessage();
             finishexecuting=false;
         }
@@ -1239,6 +1248,15 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
             }
             else {
                 showtries=true;
+            }
+        }
+		else if( token.Abbreviation("COAL") ) {
+            nxsstring yesnoreplace=GetFileName(token);
+            if (yesnoreplace[0] == 'n' || yesnoreplace[0] == 'N') {
+                useCOAL=false;
+            }
+            else {
+                useCOAL=true;
             }
         }
         else if( token.Abbreviation("MoveFreq") ) {

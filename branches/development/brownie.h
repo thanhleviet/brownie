@@ -96,6 +96,7 @@ public:
     double stoppingprecision;
     int randomstarts;
 	nxsstring treefilename;
+	bool useCOAL;
 	map< vector<int>, int> quartetcounts;
 	map< vector<int>, int> qualifiedquartets;
 	vector<int> quartetspertaxon;
