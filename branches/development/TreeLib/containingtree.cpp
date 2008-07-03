@@ -263,7 +263,7 @@ void ContainingTree::ReportTreeHealth()
             else {
                 cout<<"\tChild=NULL";
             }
-            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight()<<endl;
+            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight();
         }
         else if (currentnode==Root)
         {
@@ -286,7 +286,7 @@ void ContainingTree::ReportTreeHealth()
             else {
                 cout<<"\tChild=NULL";
             }
-            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight()<<endl;
+            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight();
         }
         else
         {
@@ -306,8 +306,12 @@ void ContainingTree::ReportTreeHealth()
             else {
                 cout<<"\tChild=NULL";
             }
-            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight()<<endl;
+            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight();
         }
+		if (GetHasEdgeLengths()) {
+			cout<<" Edge length = "<<currentnode->GetEdgeLength();
+		}
+		cout<<endl;
         currentnode = n.next();
     }
 
@@ -1361,7 +1365,10 @@ void ContainingTree::ClearInternalLabels()
 
 void ContainingTree::InitializeMissingBranchLengths()
 {
-	cout<<"InitializeMissingBranchLengths"<<endl;
+	FindAndSetRoot();
+	Update();
+	GetNodeDepths();
+	//cout<<"InitializeMissingBranchLengths"<<endl;
 	SetEdgeLengths(true);
 	MarkNodes(false); //We'll mark the nodes below which the branch lengths have been changed
 	getPathLengths(Root); //make sure we store the path lengths
@@ -1399,18 +1406,25 @@ void ContainingTree::InitializeMissingBranchLengths()
 	}
 }
 
-void ContainingTree::RandomlyModifySingleBranchLength(double markedmultiplier)
+void ContainingTree::RandomlyModifySingleBranchLength(double markedmultiplier, double brlensigma)
 {
-	cout<<"RandomlyModifySingleBranchLength"<<endl;
-	int numberofunmarkednodes=-2+2*GetNumLeaves();
+	FindAndSetRoot();
+	Update();
+	GetNodeDepths();	
+	SetEdgeLengths(true);
+	//cout<<"RandomlyModifySingleBranchLength"<<endl;
+	//ReportTreeHealth();
+	int numberofunmarkednodes=-2+(2*GetNumLeaves());
 	int numberofmarkednodes=0;
 	NodeIterator <Node> n (GetRoot());
 	NodePtr currentnode = n.begin();
+	//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
 	while (currentnode)
 	{
 		if (currentnode->IsMarked()) {
 			numberofunmarkednodes--;
 			numberofmarkednodes++;
+			//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
 		}
 		currentnode = n.next();
 	}
@@ -1424,14 +1438,24 @@ void ContainingTree::RandomlyModifySingleBranchLength(double markedmultiplier)
 			if (currentnode->IsMarked()) {
 				thresholdprobability*=markedmultiplier;
 			}
-			if (gsl_ran_flat (r,0,1)<thresholdprobability) { //adjust brlen
-				currentnode->SetEdgeLength(gsl_ran_lognormal(r,currentnode->GetEdgeLength(),1.0));
+			double testvalue=gsl_ran_flat (r,0,1);
+			//cout<<"Testvalue = "<<testvalue<<" thresholdprobability = "<<thresholdprobability<<endl;
+			if (testvalue<thresholdprobability) { //adjust brlen
+				//currentnode->SetEdgeLength(gsl_ran_lognormal(r,currentnode->GetEdgeLength(),brlensigma)); //Original brlen moving, but resulted in too high values
+				//use gamma distribution
+				//with gamma, mean = a * b and var = a * b * b
+				//we want mean = currentnode->GetEdgeLength() and var = brlensigma^2
+				//so solve for best values of a and b
+				double a=(currentnode->GetEdgeLength())*(currentnode->GetEdgeLength())/(brlensigma*brlensigma); //a = x^2/ var
+				double b=(brlensigma*brlensigma)/(currentnode->GetEdgeLength()); //b = var / x
+				currentnode->SetEdgeLength(gsl_ran_gamma(r,a,b));
 				changedbrlen=true;
+				//cout<<"Should break here"<<endl;
 				break;
 			}
 			currentnode = n.next();
 		}
 		
 	}
-	
+	//cout<<"Done adjusting"<<endl;
 }

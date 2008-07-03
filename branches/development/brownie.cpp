@@ -271,8 +271,9 @@ void BROWNIE::FactoryDefaults()
     randomstarts=15;
     treefilename="besttrees.tre";
 	useCOAL=false;
-	markedmultiplier=10.0;
-	numbrlenadjustments=0;
+	markedmultiplier=5.0;
+	brlensigma=0.5;
+	numbrlenadjustments=20;
     badgtpcount=0;
     stepsize=.1;
 	npercent=0.95;
@@ -1263,6 +1264,11 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 				message="Note that the minimum number of species to return has now been set to ";
 				message+=minnumspecies;
 				message+=", not the default 1, due to issues with COAL";
+				minsamplesperspecies=1;
+				message="Note that the minimum number of samples per species has now been set to ";
+				message+=minsamplesperspecies;
+				message+=", not the default 3, since COAL permits this (unlike the semiparametric approach)";
+				
 				PrintMessage();
             }
         }
@@ -1368,145 +1374,170 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 {
 	vector<double> scorevector;
+	bool calculatescore=true;
 	if (useCOAL) {
 		float neglnlikelihood=GSL_POSINF;
-		//export the species tree
-		nxsstring coalspecies="coalspecies.txt";
-		int currentnumberofspecies=0;
-		ofstream coalspeciesstream;
-		coalspeciesstream.open( coalspecies.c_str() );
-		ContainingTree CurrentTree=*SpeciesTreePtr;
-		CurrentTree.FindAndSetRoot();
-		CurrentTree.Update();
-		CurrentTree.GetNodeDepths();
-		CurrentTree.ReportTreeHealth();
-		CurrentTree.Draw(cout);
-		NodeIterator <Node> n (CurrentTree.GetRoot());
-		cur = n.begin();
-		while (cur) {
-			if (cur->IsLeaf()) {
-				currentnumberofspecies++;
-				//nxsstring newlabel=PipeLeafFinalSpeciesTree();
-				//cur->SetLabel(newlabel);
+		if (minsamplesperspecies>1) {
+			int maxspecies=0;
+			for (int i=0;i<convertsamplestospecies.size();i++) {
+				maxspecies=GSL_MAX(maxspecies,convertsamplestospecies[i]);
 			}
-			else {
-				cur->SetLabel("");
+			vector<int> speciesvector(maxspecies,0);
+			for (int i=0;i<convertsamplestospecies.size();i++) {
+				speciesvector[(convertsamplestospecies[i])-1]++;
 			}
-			cur = n.next();
+			for (int i=0;i<speciesvector.size();i++) {
+				if (speciesvector[i]<minsamplesperspecies) {
+					calculatescore=false;
+				}
+			}		
 		}
-		(CurrentTree).Write(coalspeciesstream);
-		coalspeciesstream<<endl;
-		coalspeciesstream.close();
-		
-		//export the gene trees
-		nxsstring coalgenes="coalgenes.txt";
-		ofstream coalgenesstream;
-		coalgenesstream.open( coalgenes.c_str());
-		for (int chosentreenum=0; chosentreenum<trees->GetNumTrees(); chosentreenum++) { //loop over all the gene trees
-			Tree CurrentGeneTreeTreeFmt=intrees.GetIthTree(chosentreenum);
-			NodeIterator <Node> n (CurrentGeneTreeTreeFmt.GetRoot());
+		if (calculatescore) {
+		//export the species tree
+			nxsstring coalspecies="coalspecies.txt";
+			int currentnumberofspecies=0;
+			ofstream coalspeciesstream;
+			coalspeciesstream.open( coalspecies.c_str() );
+			ContainingTree CurrentTree=*SpeciesTreePtr;
+			CurrentTree.FindAndSetRoot();
+			CurrentTree.Update();
+			CurrentTree.GetNodeDepths();
+			if(logf_open) {
+				logf<<"Now trying with species tree: ";
+				CurrentTree.Write(logf);
+			}
+		//CurrentTree.ReportTreeHealth();
+		//CurrentTree.Draw(cout);
+			NodeIterator <Node> n (CurrentTree.GetRoot());
 			cur = n.begin();
 			while (cur) {
 				if (cur->IsLeaf()) {
-					int SampleNumber=taxa->FindTaxon(cur->GetLabel());
-					nxsstring newlabel="taxon";
-					newlabel+=convertsamplestospecies[SampleNumber];
-					newlabel+="-";
-					newlabel+=SampleNumber;
-					cur->SetLabel(newlabel);
-					//cout<<"current label is "<<cur->GetLabel()<<" perhaps with quotes"<<endl;
+					currentnumberofspecies++;
+				//nxsstring newlabel=PipeLeafFinalSpeciesTree();
+				//cur->SetLabel(newlabel);
 				}
 				else {
 					cur->SetLabel("");
 				}
 				cur = n.next();
 			}
-			(CurrentGeneTreeTreeFmt).WriteNoQuote(coalgenesstream);
-			coalgenesstream<<endl;
-
+			(CurrentTree).Write(coalspeciesstream);
+			coalspeciesstream<<endl;
+			coalspeciesstream.close();
 			
-		}
-		coalgenesstream.close();
-		
-		//export the infile
-		nxsstring coalinfile="infile";
-		ofstream coalinfilestream;
-		coalinfilestream.open(coalinfile.c_str() );
-		coalinfilestream<<"begin coal;"<<endl;
-		coalinfilestream<<"nstaxa ";
-		coalinfilestream<<currentnumberofspecies<<";"<<endl;
-		coalinfilestream<<"ngtaxa";
-		nxsstring speciesnames="taxa names = ";
-		for (int i=1; i<=currentnumberofspecies; i++) {
-			int samplecount=0;
-			for (int j=0; j<=convertsamplestospecies.size();j++) {
-				if (convertsamplestospecies[j]==i)  {
-					samplecount++;
-				}
-			}
-			speciesnames+=" taxon";
-			speciesnames+=i;
-			coalinfilestream<<" "<<samplecount;
-		}
-		coalinfilestream<<";"<<endl;
-		coalinfilestream<<speciesnames<<";"<<endl;
-		coalinfilestream<<"intra yes;"<<endl;
-		coalinfilestream<<"gene tree file=coalgenes.txt;"<<endl;
-		coalinfilestream<<"species tree file=coalspecies.txt;"<<endl;
-		coalinfilestream<<"nstrees 1;"<<endl;
-		coalinfilestream<<"ngtrees "<<trees->GetNumTrees()<<";"<<endl;
-		nxsstring coaloutputfile="coalout.txt";
-		coalinfilestream<<"outfile = "<<coaloutputfile<<"  / probs   ;"<<endl;		
-		coalinfilestream<<"end;"<<endl;
-		coalinfilestream.close();
-		
-		//run coal
-		cout<<"Starting to call coal"<<endl;
-		int coalreturncode=-1;
-		if (currentnumberofspecies>0) { //just to head off a weird error
-			coalreturncode=system("coal > coalscreendump.txt");
-		}
-		cout<<"Done calling  coal, now parsing"<<endl;
-		//cout <<"coal returncode is "<<coalreturncode<<endl;
-		if (coalreturncode==0) {
-			neglnlikelihood=0;
-			ifstream coalin;
-			coalin.open( coaloutputfile.c_str(), ios::binary | ios::in );
-			if (coalin) {
-				char inputitem [COMMAND_MAXLEN];
-				coalin>>inputitem;
-				bool nextisprob=true; //since the input file alternates gene_tree_number SPACES prob
-				while (!coalin.eof()) {
-					coalin>>inputitem;
-					if (nextisprob) {
-						double probability=atof(inputitem);
-						if (probability==0 || probability !=probability) { //test for it not being a number or for it being nan
-							neglnlikelihood=GSL_POSINF;
-							break;
-						}
-						neglnlikelihood+=-1.0*log(probability);
-						cout<<"prob is "<<inputitem<<endl;
-						nextisprob=false;
+		//export the gene trees
+			nxsstring coalgenes="coalgenes.txt";
+			ofstream coalgenesstream;
+			coalgenesstream.open( coalgenes.c_str());
+			for (int chosentreenum=0; chosentreenum<trees->GetNumTrees(); chosentreenum++) { //loop over all the gene trees
+				Tree CurrentGeneTreeTreeFmt=intrees.GetIthTree(chosentreenum);
+				NodeIterator <Node> n (CurrentGeneTreeTreeFmt.GetRoot());
+				cur = n.begin();
+				while (cur) {
+					if (cur->IsLeaf()) {
+						int SampleNumber=taxa->FindTaxon(cur->GetLabel());
+						nxsstring newlabel="taxon";
+						newlabel+=convertsamplestospecies[SampleNumber];
+						newlabel+="-";
+						newlabel+=SampleNumber;
+						cur->SetLabel(newlabel);
+					//cout<<"current label is "<<cur->GetLabel()<<" perhaps with quotes"<<endl;
 					}
 					else {
-						nextisprob=true;
+						cur->SetLabel("");
+					}
+					cur = n.next();
+				}
+				(CurrentGeneTreeTreeFmt).WriteNoQuote(coalgenesstream);
+				coalgenesstream<<endl;
+				
+				
+			}
+			coalgenesstream.close();
+			
+		//export the infile
+			nxsstring coalinfile="infile";
+			ofstream coalinfilestream;
+			coalinfilestream.open(coalinfile.c_str() );
+			coalinfilestream<<"begin coal;"<<endl;
+			coalinfilestream<<"nstaxa ";
+			coalinfilestream<<currentnumberofspecies<<";"<<endl;
+			coalinfilestream<<"ngtaxa";
+			nxsstring speciesnames="taxa names = ";
+			for (int i=1; i<=currentnumberofspecies; i++) {
+				int samplecount=0;
+				for (int j=0; j<=convertsamplestospecies.size();j++) {
+					if (convertsamplestospecies[j]==i)  {
+						samplecount++;
 					}
 				}
+				speciesnames+=" taxon";
+				speciesnames+=i;
+				coalinfilestream<<" "<<samplecount;
 			}
-			coalin.close();
-		}
-		cout<<"Done parsing"<<endl<<endl;
+			coalinfilestream<<";"<<endl;
+			coalinfilestream<<speciesnames<<";"<<endl;
+			coalinfilestream<<"intra yes;"<<endl;
+			coalinfilestream<<"gene tree file=coalgenes.txt;"<<endl;
+			coalinfilestream<<"species tree file=coalspecies.txt;"<<endl;
+			coalinfilestream<<"nstrees 1;"<<endl;
+			coalinfilestream<<"ngtrees "<<trees->GetNumTrees()<<";"<<endl;
+			nxsstring coaloutputfile="coalout.txt";
+			coalinfilestream<<"outfile = "<<coaloutputfile<<"  / probs   ;"<<endl;		
+			coalinfilestream<<"end;"<<endl;
+			coalinfilestream.close();
+			
+		//run coal
+		//cout<<"Starting to call coal"<<endl;
+			int coalreturncode=-1;
+			if (currentnumberofspecies>0) { //just to head off a weird error
+				coalreturncode=system("coal > coalscreendump.txt");
+			}
+		//cout<<"Done calling  coal, now parsing"<<endl;
+		//cout <<"coal returncode is "<<coalreturncode<<endl;
+			if (coalreturncode==0) {
+				neglnlikelihood=0;
+				ifstream coalin;
+				coalin.open( coaloutputfile.c_str(), ios::binary | ios::in );
+				if (coalin) {
+					char inputitem [COMMAND_MAXLEN];
+					coalin>>inputitem;
+					bool nextisprob=true; //since the input file alternates gene_tree_number SPACES prob
+					while (!coalin.eof()) {
+						coalin>>inputitem;
+						if (nextisprob) {
+							double probability=atof(inputitem);
+							if (probability==0 || probability !=probability) { //test for it not being a number or for it being nan
+								neglnlikelihood=GSL_POSINF;
+								break;
+							}
+							neglnlikelihood+=-1.0*log(probability);
+						//cout<<"prob is "<<inputitem<<endl;
+							nextisprob=false;
+						}
+						else {
+							nextisprob=true;
+						}
+					}
+				}
+				coalin.close();
+			}
+		//cout<<"Done parsing"<<endl<<endl;
 		//process the output
+		}
 		scorevector.push_back(neglnlikelihood);
 		scorevector.push_back(0);
 		scorevector.push_back(0);
-		cout<<"neglnlikelihood = "<<neglnlikelihood<<endl;
+		//cout<<"neglnlikelihood = "<<neglnlikelihood<<endl;
+		if(logf_open) {
+			logf<<"\t[neglnlikelihood = "<<neglnlikelihood<<" ]"<<endl;
+		}
+		
 	}
 	else {
     //We do this so we don't bother doing the GTP or triplet calculations if they're not needed.
 		triplettoohigh=false;
 		gtptoohigh=false;
-		bool calculatescore=true;
 		double combinedscore=0;
 		double tripletscore=0;
 		double gtpscore=0;
@@ -1964,7 +1995,12 @@ void BROWNIE::DoHeuristicSearch()
     nxsstring scoretype;
 	message="Now starting the search proper.\nA \">\" before a score indicates that calculation of that score was aborted once the score for that move exceeded the best local score\n";
 	if (!jackknifesearch) {
-		message+="\nRep\tMoves\t#Spp\tType\tQual\tCombScore\t      GTP\t   Struct\t    Local\t   Global\tNTrees\tRemaining";
+		if (!useCOAL) {
+			message+="\nRep\tMoves\t#Spp\tType\tQual\tCombScore\t      GTP\t   Struct\t    Local\t   Global\tNTrees\tRemaining";
+		}
+		else {
+			message+="\nRep\tMoves\t#Spp\tType\tQual\tNegLnL\t      Local\t   Global\tNTrees\tRemaining";
+		}
 	}
 	else {
 	    message+="\nJackRep\tRep\tMoves\t#Spp\tType\tQual\tCombScore\t      GTP\t   Struct\t    Local\t   Global\tNTrees\tRemaining";
@@ -2154,6 +2190,8 @@ if (useCOAL) {
 vector<double> bestscorelocalvector=GetCombinedScore(&StartingTree);
 bestscorelocal=bestscorelocalvector[0];
 if (bestscorelocal==bestscore) {
+	//cout<<"Before RawBestTrees.push_back(StartingTree);"<<endl;
+	//StartingTree.ReportTreeHealth();
     RawBestTrees.push_back(StartingTree);
 	//TotalScores.push_back(bestscorelocalvector[0]);
 	//GTPScores.push_back(bestscorelocalvector[1]);
@@ -2163,6 +2201,8 @@ if (bestscorelocal==bestscore) {
 }
 else if (bestscorelocal<bestscore) {
     RawBestTrees.clear();
+	//cout<<"Before RawBestTrees.push_back(StartingTree);"<<endl;
+	//StartingTree.ReportTreeHealth();
     RawBestTrees.push_back(StartingTree);
     FormattedBestTrees.clear();
 	TotalScores.clear();
@@ -2183,6 +2223,9 @@ else {
 //while (bestscorelocal<0) { //due to error in GTP
 //    bestscorelocal=ReturnScore(OutputForGTP(&StartingTree));
 //}
+//cout<<"Before BestTreesThisRep.push_back(StartingTree);"<<endl;
+//StartingTree.ReportTreeHealth();
+
 BestTreesThisRep.push_back(StartingTree);
 
 //BestTree=StartingTree;
@@ -2217,6 +2260,8 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
     //(BestTreesThisRep.back()).ReportTreeHealth();
     // cout<<"GetRoot: "<<(BestTreesThisRep.back()).GetRoot()<<endl;
     assert(BestTreesThisRep.size()>0);
+	//cout<<"Before  ContainingTree CurrentTree=BestTreesThisRep.back();"<<endl;
+	//(BestTreesThisRep.back()).ReportTreeHealth();
     ContainingTree CurrentTree=BestTreesThisRep.back();
     CurrentTree.Update();
     CurrentTree.ResetBreakVector();
@@ -2374,12 +2419,14 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
         char outputstring[9];
         sprintf(outputstring,"%9.3f",bestscorelocal);
         message+=outputstring;
-        message+="\t";
-        sprintf(outputstring,"%9.3f",bestscorelocalvector[1]);
-        message+=outputstring;
-        message+="\t";
-        sprintf(outputstring,"%9.3f",bestscorelocalvector[2]);
-        message+=outputstring;
+		if (!useCOAL) {
+			message+="\t";
+			sprintf(outputstring,"%9.3f",bestscorelocalvector[1]);
+			message+=outputstring;
+			message+="\t";
+			sprintf(outputstring,"%9.3f",bestscorelocalvector[2]);
+			message+=outputstring;
+		}
         message+="\t";
         sprintf(outputstring,"%9.3f",bestscorelocal);
         message+=outputstring;
@@ -2424,14 +2471,17 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
     }
 
     while ((moreswaps || morereassignments || moreincreases || moredecreases || morererootings) && (rearrlimit<0 || movecount<rearrlimit)) {
-		cout<<"while ((moreswaps || morereassignments || moreincreases || moredecreases || morererootings) && (rearrlimit<0 || movecount<rearrlimit)) {"<<endl;
+		//cout<<"while ((moreswaps || morereassignments || moreincreases || moredecreases || morererootings) && (rearrlimit<0 || movecount<rearrlimit)) {"<<endl;
         bool somethinghappened=true;
-		cout<<"just before ContainingTree NextTree=CurrentTree"<<endl;
+		//cout<<"just before ContainingTree NextTree=CurrentTree"<<endl;
+		CurrentTree.FindAndSetRoot();
+		CurrentTree.Update();
+		//CurrentTree.ReportTreeHealth();
         ContainingTree NextTree=CurrentTree;
-		cout<<"just after ContainingTree NextTree=CurrentTree"<<endl;
-		cout<<"just before ContainingTree BrlenChangedTree"<<endl;
+		//cout<<"just after ContainingTree NextTree=CurrentTree"<<endl;
+		//cout<<"just before ContainingTree BrlenChangedTree"<<endl;
 		ContainingTree BrlenChangedTree;
-		cout<<"just after ContainingTree BrlenChangedTree"<<endl;
+		//cout<<"just after ContainingTree BrlenChangedTree"<<endl;
         //   cout<<"\n\nOldTree\n"<<ReturnFinalSpeciesTree(CurrentTree)<<endl;
         // for (int i=0;i<convertsamplestospecies.size();i++) {
         //      cout<<convertsamplestospecies[i]<<" ";
@@ -2645,6 +2695,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             int combinationmoves=0;
             //while(bestscorefound==false) {
 			gsl_combination *c;
+			vector<int> LastTriedconvertsamplestospecies;
 			for (j=1;j<=samplestomove.size();j++) { //always move
 				c=gsl_combination_calloc(samplestomove.size(),j);
 				do
@@ -2662,6 +2713,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 						for (int k=0;k<j;k++) {
 							convertsamplestospecies[samplestomove[int(gsl_combination_get(c,k))]]=changevector[1]; //assign this taxon to the new species
 						}
+						LastTriedconvertsamplestospecies=convertsamplestospecies;
                             //  for (int m=0;m<convertsamplestospecies.size();m++) {
                             //      cout<<convertsamplestospecies[m]<<" ";
                             //   }
@@ -2676,7 +2728,17 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 						vector<double> newscoreforcombinationvector=GetCombinedScore(&NextTree);
 						double newscoreforcombination=newscoreforcombinationvector[0];
 						lastscorevector.swap(newscoreforcombinationvector);
-						if (newscoreforcombination<bestscoreforcombination) {
+						if (showtries) {
+							cout<<"Score "<<newscoreforcombination<<" assign ( ";
+							for (int i=0; i<convertsamplestospecies.size();i++) {
+								cout<<convertsamplestospecies[i]<<" ";
+							}
+							cout<<" )"<<endl;
+						}	
+						if ((newscoreforcombination<bestscoreforcombination) && (1==gsl_finite(newscoreforcombination))) { //the second condition makes sure it isn't nan or inf
+							if (showtries) {
+								cout<<" Above is BETTER"<<endl;
+							}
 							bestscoreforcombination=newscoreforcombination;
 							Bestconvertsamplestospecies=convertsamplestospecies;
 							if (!steepest && !exhaustive) {
@@ -2709,6 +2771,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				nextscore=nextscorevector[0];
 			}
 			else {
+				convertsamplestospecies=LastTriedconvertsamplestospecies; //otherwise, an n-species tree is evaluated with the original convertsamplestospecies vector, which has n-1 species
 				nextscorevector.swap(lastscorevector);
 				nextscore=nextscorevector[0];
 			}
@@ -2783,7 +2846,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             movecount--;
         }
         if (somethinghappened) {
-			cout<<"Something happened"<<endl;
+			//cout<<"Something happened"<<endl;
             if (NextTree.GetNumLeaves()==NextTree.GetNumInternals()) {
                 errormsg="Error: num leaves = num internals\nLast move chosen was";
                 errormsg+=chosenmove;
@@ -2817,27 +2880,39 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             bool modifiedscoretype=false;
 			
 			if (useCOAL) {
-				cout<<"NextTreeHealth"<<endl;
-				NextTree.ReportTreeHealth();
-				BestBranchlengthTreeForThisNextTree.push_back(NextTree);
+				//cout<<"NextTreeHealth at line 2832"<<endl;
+				NextTree.FindAndSetRoot();
+				NextTree.Update();
+				//NextTree.ReportTreeHealth();
+				//BestBranchlengthTreeForThisNextTree.push_back(NextTree);
 				for (int brlenrep=0; brlenrep<numbrlenadjustments; brlenrep++) {
-					BrlenChangedTree=BestBranchlengthTreeForThisNextTree.back();
-					BrlenChangedTree.RandomlyModifySingleBranchLength(markedmultiplier);
+					//BrlenChangedTree=BestBranchlengthTreeForThisNextTree.back();
+					BrlenChangedTree.SetRoot(NextTree.CopyOfSubtree(NextTree.GetRoot()));
+					BrlenChangedTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
 					vector<double> brlenscorevector=GetCombinedScore(&BrlenChangedTree);
 					if (brlenscorevector[0]<nextscore) {
-						cout<<"Better brlen found"<<endl;
-						BestBranchlengthTreeForThisNextTree.clear();
-						BestBranchlengthTreeForThisNextTree.push_back(BrlenChangedTree);
+						//cout<<"Better brlen found"<<endl;
+						//BestBranchlengthTreeForThisNextTree.clear();
+						//BestBranchlengthTreeForThisNextTree.push_back(BrlenChangedTree);
 						nextscore=brlenscorevector[0];
 						nextscorevector[0]=brlenscorevector[0]; //other elements are the same
 						brlenrep=0; //so we restart from the new optimum
+						NextTree.SetRoot(BrlenChangedTree.CopyOfSubtree(BrlenChangedTree.GetRoot()));
+				//BestBranchlengthTreeForThisNextTree.clear();
+						//cout<<"NextTree Health after copying from BrlenChangedTree"<<endl;
+						NextTree.FindAndSetRoot();
+						NextTree.Update();
+						//NextTree.ReportTreeHealth();
+						
 					}
 				}
-				NextTree=BestBranchlengthTreeForThisNextTree.back();
+				
 			}
-			cout<<"NextTree Health"<<endl;
-			NextTree.ReportTreeHealth();
-            if (nextscore<bestscore) {
+			//cout<<"NextTree Health"<<endl;
+			NextTree.FindAndSetRoot();
+			NextTree.Update();
+			//NextTree.ReportTreeHealth();
+            if ((nextscore<bestscore) && (1==gsl_finite(nextscore))) {
                 scoretype="*G\t";
                 modifiedscoretype=true;
                 improvement=true;
@@ -2857,11 +2932,11 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 //  (FormattedBestTrees.back()).Draw(cout);
                 bestscore=nextscore;
                 if (showtries) {
-                    cout<<"GOT BETTER TREE"<<endl<<endl;
+                    cout<<"GOT BETTER TREE with score of "<<nextscore<<endl<<endl;
                     NextTree.Draw(cout);
                 }
             }
-            else if (nextscore==bestscore) {
+            else if ((nextscore==bestscore) && (1==gsl_finite(nextscore))) {
                 scoretype="=G\t";
                 modifiedscoretype=true;
                 NextTree.Update();
@@ -2875,7 +2950,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 //    (FormattedBestTrees.back()).Draw(cout);
             }
 			
-            if (nextscore<bestscorelocal) {
+            if ((nextscore<bestscorelocal) && (1==gsl_finite(nextscore))) {
                 if (!modifiedscoretype) {
                     scoretype="*L\t";
                 }
@@ -2887,7 +2962,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 BestTreesThisRep.push_back(NextTree);
                 CurrentTree.ResetBreakVector(); ///////figure out when to  reset this: any time you move to a new optimum
             }
-            else if (nextscore==bestscorelocal) {
+            else if ((nextscore==bestscorelocal) && (1==gsl_finite(nextscore))) {
                 if (!modifiedscoretype) {
                     scoretype="=L\t";
                 }
@@ -2923,18 +2998,20 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             char outputstring[9];
             sprintf(outputstring,"%9.3f",nextscore);
             message+=outputstring;
-            message+="\t";
-			if (gtptoohigh) {
-				message+=">";
-			}						
-            sprintf(outputstring,"%9.3f",nextscorevector[1]);
-            message+=outputstring;
-            message+="\t";
-			if (gtptoohigh || triplettoohigh) { //since we abort gtp calculations if the triplet cost is already too high
-				message+=">";
-			}									
-            sprintf(outputstring,"%9.3f",nextscorevector[2]);
-            message+=outputstring;
+			if (!useCOAL) {
+				message+="\t";
+				if (gtptoohigh) {
+					message+=">";
+				}						
+				sprintf(outputstring,"%9.3f",nextscorevector[1]);
+				message+=outputstring;
+				message+="\t";
+				if (gtptoohigh || triplettoohigh) { //since we abort gtp calculations if the triplet cost is already too high
+					message+=">";
+				}									
+				sprintf(outputstring,"%9.3f",nextscorevector[2]);
+				message+=outputstring;
+			}
             message+="\t";
             sprintf(outputstring,"%9.3f",bestscorelocal);
             message+=outputstring;
@@ -2991,9 +3068,9 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				convertsamplestospecies.assign( Originalconvertsamplestospecies.begin(), Originalconvertsamplestospecies.end() );
                 //convertsamplestospecies.swap(Originalconvertsamplestospecies);
             }
-			cout<<"done outputting status line"<<endl;
+			//cout<<"done outputting status line"<<endl;
         } //if something happened
-		cout<<"done if something happened loop"<<endl;
+		//cout<<"done if something happened loop"<<endl;
     } //while (moreswaps || morereassignments || moreincreases || moredecreases )
 }//while improvement
  //DelDupes();
@@ -9862,6 +9939,9 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
     FormattedNewBestTree.FindAndSetRoot();
     FormattedNewBestTree.Update();
     FormattedNewBestTree.GetNodeDepths();
+	if (useCOAL) {
+		FormattedNewBestTree.SetEdgeLengths(true);	
+	}
     NodeIterator <Node> n (FormattedNewBestTree.GetRoot());
     cur = n.begin();
     while (cur) {
@@ -9935,7 +10015,12 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
 				jackknifetreestooutput+=ReturnFinalSpeciesTree(FormattedBestTrees[i]);
 				jackknifetreestooutput+="\n";
 			}
-            outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies<<"; Score: "<<TotalScores[i]<<" = "<<(1-structwt)<<" x GTP ("<<GTPScores[i]<<") + "<<structwt<<" x Struct ("<<StructScores[i]<<") ] [&R] ";
+            if (!useCOAL) {
+				outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies<<"; Score: "<<TotalScores[i]<<" = "<<(1-structwt)<<" x GTP ("<<GTPScores[i]<<") + "<<structwt<<" x Struct ("<<StructScores[i]<<") ] [&R] ";
+			}
+			else {
+				outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies<<"; NegLnL: "<<TotalScores[i]<<" ] [&R] ";
+			}
             outtreef<<ReturnFinalSpeciesTree(FormattedBestTrees[i]);
             outtreef<<endl;
         }
@@ -10959,6 +11044,11 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
     {
         nxsstring output="";
         output+=(cur->GetLabel());
+		if (useCOAL)
+		{
+			output+=":";
+			output+=cur->GetEdgeLength();
+		}		
         return output;
     }
 
@@ -11091,6 +11181,12 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
         nxsstring output="";
         if (cur->GetLabel() != "")
             output+=cur->GetLabel();
+		if (useCOAL)
+		{
+			output+=":";
+			output+=cur->GetEdgeLength();
+		}
+		
         return output;
     }
 
