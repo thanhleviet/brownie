@@ -202,6 +202,8 @@ public:
     void HandleBlocks( NexusToken& token );
     void HandleDebug( NexusToken& token );
 	void HandleNoQuitOnErr( NexusToken& token );
+	double AIC(double neglnL, int K);
+	double AICc(double neglnL, int K, int N);
     void HandleDebugOptimization (NexusToken & token);
     void HandleHelp( NexusToken& token );
     void HandleLog( NexusToken& token );

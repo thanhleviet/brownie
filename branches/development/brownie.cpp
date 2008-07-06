@@ -963,6 +963,19 @@ void BROWNIE::HandleNoQuitOnErr( NexusToken& token )
     PrintMessage();
 }
 
+double BROWNIE::AIC(double neglnL, int K) {
+	double AIC = 2.0 * (1.0*K+neglnL);
+	return AIC;
+}
+
+double BROWNIE::AICc(double neglnL, int K, int N) {
+	double AICc=GSL_POSINF;
+	if ((N-K-1)>0) {
+		AICc= 2.0 * (1.0*K+neglnL) + 2.0*K*(K+1.0)/(1.0*(N-K-1.0));
+	}
+	return AICc;
+}
+
 
 
 /**
@@ -1491,7 +1504,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		//cout<<"Starting to call coal"<<endl;
 			int coalreturncode=-1;
 			if (currentnumberofspecies>0) { //just to head off a weird error
-				coalreturncode=system("coal > coalscreendump.txt");
+				coalreturncode=system("coal > /dev/null");
 			}
 		//cout<<"Done calling  coal, now parsing"<<endl;
 		//cout <<"coal returncode is "<<coalreturncode<<endl;
