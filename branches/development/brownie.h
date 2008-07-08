@@ -97,6 +97,8 @@ public:
     int randomstarts;
 	nxsstring treefilename;
 	bool useCOAL;
+	bool exportalltrees;
+	int COALaicmode;
 	double markedmultiplier;
 	double brlensigma;
 	int numbrlenadjustments;

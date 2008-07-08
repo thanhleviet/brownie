@@ -310,6 +310,9 @@ void ContainingTree::ReportTreeHealth()
         }
 		if (GetHasEdgeLengths()) {
 			cout<<" Edge length = "<<currentnode->GetEdgeLength();
+			if (((currentnode->GetEdgeLength())!=(currentnode->GetEdgeLength())) || gsl_isnan(currentnode->GetEdgeLength()) || gsl_isinf(currentnode->GetEdgeLength())) {
+				cout<<" <-is nan";
+			}
 		}
 		cout<<endl;
         currentnode = n.next();
@@ -1378,7 +1381,7 @@ void ContainingTree::InitializeMissingBranchLengths()
 		NodePtr currentnode = n.begin();
 		while (currentnode)
 		{
-			if ((currentnode->GetEdgeLength())==0) {
+			if (((currentnode->GetEdgeLength())==0) || ((currentnode->GetEdgeLength())!=(currentnode->GetEdgeLength())) || gsl_isnan(currentnode->GetEdgeLength()) || gsl_isinf(currentnode->GetEdgeLength())) { //test for ==0 or ==nan
 				currentnode->SetEdgeLength(1.0);
 			}
 			currentnode = n.next();

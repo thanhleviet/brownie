@@ -271,8 +271,10 @@ void BROWNIE::FactoryDefaults()
     randomstarts=15;
     treefilename="besttrees.tre";
 	useCOAL=false;
+	exportalltrees=true;
+	COALaicmode=1;
 	markedmultiplier=5.0;
-	brlensigma=0.5;
+	brlensigma=1.0;
 	numbrlenadjustments=20;
     badgtpcount=0;
     stepsize=.1;
@@ -313,6 +315,7 @@ void BROWNIE::FactoryDefaults()
     movefreqvector.push_back(0.01);
     movefreqvector.push_back(0.01);
     movefreqvector.push_back(0.17);
+	movefreqvector.push_back(0.0); //do no brlen optimization
     sppnumfixed=false;
     unrooted=0; //by default, use rooted gene trees
     bestscore=GSL_POSINF;
@@ -1164,8 +1167,8 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
             message+=pthreshold;
 			message+="\nSubsample    <double>                                ";
 			message+=chosensubsampling;
-            message+="\nMoveFreq     (number number number number number)    (";
-            for (int i=0;i<5;i++) {
+            message+="\nMoveFreq     (number number number number number [number])    (";
+            for (int i=0;i<6;i++) {
                 message+=movefreqvector[i];
                 message+=" ";
             }
@@ -1185,6 +1188,8 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			else {
 				message+="No";
 			}
+			message+="\nAIC_mode       0|1|2|3|4                               ";
+			message+=COALaicmode;
             message+="\n\nNReps: Number of random starting species trees to use";
             //message+="\nTimeLimit: Limit search to X seconds";
             //message+="\nClock: Count seconds for time limit using actual elapsed time ('Wall'->Clock on a wall) or CPU time"; //NOte to self: see discussion online of time() fn and clock() fn in C++
@@ -1200,6 +1205,7 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
            // message+="\nSteepest: Whether to look at all rearrangements and then take the best one or just take the first better one.";
 			message+="\nSubsample: How extensively to try taxon reassignments on leaf splits. \n\tA value of 1 means try all of the possible reassignments, \n\ta value of 2 means try the square root of all the possible assignments,\n\t3 means the cube root, etc. A higher number means a faster but less effective search.\n\tThe program won't let you try fewer than 10 assignments on average.";
 			message+="\nCOAL: Use Degnan's program COAL to optimize the likelihood of the species delimitation and tree rather than the semiparametric penalty function";
+			message+="\nAIC_mode: When using COAL, use the 0: likelihood as the penalty term, 1: AIC value (k=number of species), 2: AICc with n=number of genes, 3: AICc with n=number of samples, 4: AICc with n=(number of genes) * (number of samples)";
             PrintMessage();
             finishexecuting=false;
         }
@@ -1277,14 +1283,57 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 				message="Note that the minimum number of species to return has now been set to ";
 				message+=minnumspecies;
 				message+=", not the default 1, due to issues with COAL";
-				minsamplesperspecies=1;
-				message="Note that the minimum number of samples per species has now been set to ";
-				message+=minsamplesperspecies;
-				message+=", not the default 3, since COAL permits this (unlike the semiparametric approach)";
+				/*if (movefreqvector[5]==0) {
+					message+="\nChanging the movefreq vector to allow branch swaps";
+					for (int i=0; i<5; i++) {
+						movefreqvector[i]=movefreqvector[i]*0.8;
+					}
+					movefreqvector[5]=0.2;
+				} */
+				//minsamplesperspecies=1;
+				//message="Note that the minimum number of samples per species has now been set to ";
+				//message+=minsamplesperspecies;
+				//message+=", not the default 3, since COAL permits this (unlike the semiparametric approach)";
 				
 				PrintMessage();
             }
         }
+		else if (token.Abbreviation("AIC_mode")) {
+			nxsstring numbernexus;
+            numbernexus = GetNumber(token);
+            int AICmoderaw=atoi( numbernexus.c_str() ); //convert to int
+			if (AICmoderaw==0) {
+				message="Using likelihood as penalty function";
+				COALaicmode=AICmoderaw;
+				PrintMessage();
+			}
+			else if (AICmoderaw==1) {
+				message="Using AIC as penalty function";
+				COALaicmode=AICmoderaw;
+				PrintMessage();
+			}
+			else if (AICmoderaw==2) {
+				message="Using AICc as penalty function, with n=number of genes";
+				COALaicmode=AICmoderaw;
+				PrintMessage();
+			}
+			else if (AICmoderaw==3) {
+				message="Using AICc as penalty function, with n=number of samples";
+				COALaicmode=AICmoderaw;
+				PrintMessage();
+			}
+			else if (AICmoderaw==4) {
+				message="Using AICc as penalty function, with n=(number of genes) * (number of samples)";
+				COALaicmode=AICmoderaw;
+				PrintMessage();
+			}
+			else {
+				errormsg="You entered an unrecognized option for AIC_mode: should be an integer 0-4, but you entered ";
+				errormsg+=AICmoderaw;
+				throw XNexus( errormsg);
+			}
+			
+		}
         else if( token.Abbreviation("MoveFreq") ) {
             token.GetNextToken();
             token.GetNextToken(); //eat the equals sign
@@ -1306,13 +1355,19 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
                     break;
                 }
             }
-            if (inputcount!=5) {
-                errormsg="You should have entered five frequencies, you entered ";
+            if (inputcount!=5 && inputcount!=6) {
+                errormsg="You should have entered five (or six) frequencies, you entered ";
                 errormsg+=inputcount;
                 throw XNexus( errormsg);
             }
             else {
                 double sumoffreqs=temporarymovefreqvector[0]+temporarymovefreqvector[1]+temporarymovefreqvector[2]+temporarymovefreqvector[3]+temporarymovefreqvector[4];
+				if (inputcount==6) {
+					sumoffreqs+=temporarymovefreqvector[5];
+				}
+				else {
+					temporarymovefreqvector.push_back(0);
+				}
                 movefreqvector.clear();
                 for (int i=0; i<temporarymovefreqvector.size(); i++) {
                     movefreqvector[i]=(temporarymovefreqvector[i])/sumoffreqs;
@@ -1389,6 +1444,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 	vector<double> scorevector;
 	bool calculatescore=true;
 	if (useCOAL) {
+		int currentnumberofspecies=0;
 		float neglnlikelihood=GSL_POSINF;
 		if (minsamplesperspecies>1) {
 			int maxspecies=0;
@@ -1408,7 +1464,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		if (calculatescore) {
 		//export the species tree
 			nxsstring coalspecies="coalspecies.txt";
-			int currentnumberofspecies=0;
+
 			ofstream coalspeciesstream;
 			coalspeciesstream.open( coalspecies.c_str() );
 			ContainingTree CurrentTree=*SpeciesTreePtr;
@@ -1509,6 +1565,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		//cout<<"Done calling  coal, now parsing"<<endl;
 		//cout <<"coal returncode is "<<coalreturncode<<endl;
 			if (coalreturncode==0) {
+				int returncount=0;
 				neglnlikelihood=0;
 				ifstream coalin;
 				coalin.open( coaloutputfile.c_str(), ios::binary | ios::in );
@@ -1525,6 +1582,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 								break;
 							}
 							neglnlikelihood+=-1.0*log(probability);
+							returncount++;
 						//cout<<"prob is "<<inputitem<<endl;
 							nextisprob=false;
 						}
@@ -1534,9 +1592,30 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 					}
 				}
 				coalin.close();
+				if (returncount!=trees->GetNumTrees()) {
+					neglnlikelihood=GSL_POSINF; //THere's an error, we returned the wrong number of likelihood scores
+				}
+				
 			}
 		//cout<<"Done parsing"<<endl<<endl;
 		//process the output
+		}
+		assert(neglnlikelihood>0);
+		double score=neglnlikelihood;
+		if (COALaicmode==0) {
+			//do nothing, we're just using raw lnL
+		}
+		else if (COALaicmode==1) {
+			score=AIC(neglnlikelihood,currentnumberofspecies);
+		}
+		else if (COALaicmode==2) {
+			score=AICc(neglnlikelihood,currentnumberofspecies,trees->GetNumTrees());
+		}
+		else if (COALaicmode==3) {
+			score=AICc(neglnlikelihood,currentnumberofspecies,taxa->GetNumTaxonLabels());
+		}
+		else if (COALaicmode==4) {
+			score=AICc(neglnlikelihood,currentnumberofspecies,(trees->GetNumTrees())*(taxa->GetNumTaxonLabels()));
 		}
 		scorevector.push_back(neglnlikelihood);
 		scorevector.push_back(0);
@@ -1926,7 +2005,6 @@ double BROWNIE::DoAllAssignments(double bestscore, int maxspecies, ContainingTre
 	return bestscore;
 }
 
-
 void BROWNIE::DoHeuristicSearch()
 {
 	if (jackknifesearch) {
@@ -2012,7 +2090,15 @@ void BROWNIE::DoHeuristicSearch()
 			message+="\nRep\tMoves\t#Spp\tType\tQual\tCombScore\t      GTP\t   Struct\t    Local\t   Global\tNTrees\tRemaining";
 		}
 		else {
-			message+="\nRep\tMoves\t#Spp\tType\tQual\tNegLnL\t      Local\t   Global\tNTrees\tRemaining";
+			if (COALaicmode==0) {
+				message+="\nRep\tMoves\t#Spp\tType\tQual\t     NegLnL\t      Local\t   Global\tNTrees\tRemaining";
+			}
+			else if (COALaicmode==1) {
+				message+="\nRep\tMoves\t#Spp\tType\tQual\t     AIC\t      Local\t   Global\tNTrees\tRemaining";
+			}
+			else  {
+				message+="\nRep\tMoves\t#Spp\tType\tQual\t     AICc\t      Local\t   Global\tNTrees\tRemaining";
+			}
 		}
 	}
 	else {
@@ -2200,6 +2286,36 @@ StartingTree.ConvertTaxonNamesToRandomTaxonNumbers();
 if (useCOAL) {
 		StartingTree.InitializeMissingBranchLengths();
 }
+
+
+//////////Copied from stuff below////////////////
+			//brlen optimization
+if (useCOAL) {
+	
+				StartingTree.FindAndSetRoot();
+				StartingTree.Update();
+				StartingTree.InitializeMissingBranchLengths();
+				for (int brlenrep=0; brlenrep<10*(numbrlenadjustments-1); brlenrep++) {
+					ContainingTree StartingTreeBrlenMod;
+					StartingTreeBrlenMod.SetRoot(StartingTree.CopyOfSubtree(StartingTree.GetRoot()));
+					StartingTreeBrlenMod.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
+					vector<double> brlenscorevector=GetCombinedScore(&StartingTreeBrlenMod);
+					if (brlenscorevector[0]<=bestscorelocal) {
+						if (brlenscorevector[0]<bestscorelocal) {
+							brlenrep=0; //so we restart from the new optimum
+							bestscorelocal=brlenscorevector[0];
+						}
+						StartingTree.SetRoot(StartingTreeBrlenMod.CopyOfSubtree(StartingTreeBrlenMod.GetRoot()));
+						StartingTree.FindAndSetRoot();
+						StartingTree.Update();
+						
+					}
+				}
+				
+}
+
+//////////Copied from stuff below////////////////
+
 vector<double> bestscorelocalvector=GetCombinedScore(&StartingTree);
 bestscorelocal=bestscorelocalvector[0];
 if (bestscorelocal==bestscore) {
@@ -2478,6 +2594,9 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
         else {
             message+="_";
         }
+		if (movefreqvector[5]>0) {
+			message+="b";
+		}
         if (status) {
             PrintMessage();
         }
@@ -2543,6 +2662,11 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             possiblemovechoicevector.push_back(5);
             possiblemoveabbrevvector.push_back("r");
         }
+		possiblemovefreqvector.push_back(movefreqvector[5]); //the brlen optimization
+		if (movefreqvector[5]>0) {
+			possiblemovechoicevector.push_back(6);
+            possiblemoveabbrevvector.push_back("b");
+		}
         double sumofpossiblemovefreqs=0;
         for (int k=0; k<possiblemovefreqvector.size(); k++) {
             sumofpossiblemovefreqs+=possiblemovefreqvector[k];
@@ -2854,6 +2978,17 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             nextscorevector=GetCombinedScore(&NextTree);
             nextscore=nextscorevector[0];
         }
+		else if (chosenmove==6) {
+			if (showtries) {
+				cout<<"Doing branch length optimization\n";
+			}
+			NextTree.FindAndSetRoot();
+			NextTree.Update();
+			NextTree.InitializeMissingBranchLengths();
+			NextTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
+			nextscorevector=GetCombinedScore(&NextTree);
+            nextscore=nextscorevector[0];
+		}
         else {
             somethinghappened=false;
             movecount--;
@@ -2868,59 +3003,211 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				
             }
             assert(CheckConvertSamplesToSpeciesVector(false));
-            //int maxspnum=0;
-            //for (int i=0;i<convertsamplestospecies.size();i++) {
-            //    cout<<convertsamplestospecies[i]<<" ";
-            //  if (convertsamplestospecies[i]>maxspnum) {
-            //    maxspnum=convertsamplestospecies[i];
-            //  }
-            //}
-            //  cout<<endl;
-            //  cout<<"maxspnum="<<maxspnum<<endl;
-            // for (int j=1;j<=maxspnum;j++) {
-            //     int samplecount=0;
-            //      for (int i=0;i<convertsamplestospecies.size();i++) {
-            //  if (convertsamplestospecies[i]==j) {
-            //        samplecount++;
-            //      }
-            //    }
-            //  cout<<j<<"\t"<<samplecount<<endl;
-            //      assert(samplecount>0);
-            //    }
-			
-            //  cout<<"\nNextTree\n"<<ReturnFinalSpeciesTree(NextTree)<<endl;
+
             scoretype="\t";
             bool modifiedscoretype=false;
 			
+			
+			//brlen optimization
 			if (useCOAL) {
-				//cout<<"NextTreeHealth at line 2832"<<endl;
 				NextTree.FindAndSetRoot();
 				NextTree.Update();
-				//NextTree.ReportTreeHealth();
-				//BestBranchlengthTreeForThisNextTree.push_back(NextTree);
+				NextTree.InitializeMissingBranchLengths();
 				for (int brlenrep=0; brlenrep<numbrlenadjustments; brlenrep++) {
-					//BrlenChangedTree=BestBranchlengthTreeForThisNextTree.back();
 					BrlenChangedTree.SetRoot(NextTree.CopyOfSubtree(NextTree.GetRoot()));
 					BrlenChangedTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
 					vector<double> brlenscorevector=GetCombinedScore(&BrlenChangedTree);
-					if (brlenscorevector[0]<nextscore) {
-						//cout<<"Better brlen found"<<endl;
-						//BestBranchlengthTreeForThisNextTree.clear();
-						//BestBranchlengthTreeForThisNextTree.push_back(BrlenChangedTree);
-						nextscore=brlenscorevector[0];
-						nextscorevector[0]=brlenscorevector[0]; //other elements are the same
-						brlenrep=0; //so we restart from the new optimum
+					if (brlenscorevector[0]<=nextscore) {
+						if (brlenscorevector[0]<nextscore) {
+							brlenrep=0; //so we restart from the new optimum
+							nextscore=brlenscorevector[0];
+							nextscorevector[0]=brlenscorevector[0]; //other elements are the same
+						}
 						NextTree.SetRoot(BrlenChangedTree.CopyOfSubtree(BrlenChangedTree.GetRoot()));
-				//BestBranchlengthTreeForThisNextTree.clear();
-						//cout<<"NextTree Health after copying from BrlenChangedTree"<<endl;
 						NextTree.FindAndSetRoot();
 						NextTree.Update();
-						//NextTree.ReportTreeHealth();
 						
 					}
 				}
 				
 			}
+			 
+			
+			//Contour search
+			if (useCOAL) {
+				vector<double> speciestreebranchlengthvector;
+				vector<vector<double> > gridvectors;
+				double startingwidth=0.5; //start by looking at all brlen within 20% of given value
+				double startingnumbersteps=20;
+				int maxrecursions=10;
+				int recursions=0;
+				int numberofedges=0;
+				bool donecontour=false;
+				while (!donecontour) {
+					recursions++;
+					//cout<<"donecontour"<<endl;
+					vector<double> minimumvector;
+					vector<double> incrementwidths;
+					vector<double> currentvector;
+					speciestreebranchlengthvector.clear();
+					gridvectors.clear();
+					NextTree.FindAndSetRoot();
+					NextTree.Update();
+					NextTree.InitializeMissingBranchLengths();
+					BrlenChangedTree.SetRoot(NextTree.CopyOfSubtree(NextTree.GetRoot()));
+					BrlenChangedTree.Update();
+					BrlenChangedTree.InitializeMissingBranchLengths();
+					//BrlenChangedTree.ReportTreeHealth();
+					vector<double> speciestreebranchlengthvector;
+					NodeIterator <Node> n (BrlenChangedTree.GetRoot());
+					NodePtr currentnode = n.begin();
+					NodePtr rootnode=BrlenChangedTree.GetRoot();
+					numberofedges=0;
+					while (currentnode)
+					{
+						if (currentnode!=rootnode) {
+							double edgelength=currentnode->GetEdgeLength();
+							if (gsl_isnan(edgelength)) {
+								edgelength=1.0;
+							}
+							speciestreebranchlengthvector.push_back(edgelength); //get midpoint edges
+							double mindepth=GSL_MAX(edgelength*(1-startingwidth),0);
+							double maxdepth=edgelength*(1+startingwidth);
+							//cout<<"mindepth = "<<mindepth<<" maxdepth = "<<maxdepth<<endl<<endl;
+							minimumvector.push_back(mindepth);
+							currentvector.push_back(mindepth); //start with minimum values, then  move up
+							incrementwidths.push_back((maxdepth-mindepth)/(startingnumbersteps-1.0));
+							numberofedges++;
+						}
+						currentnode = n.next();
+					}
+					bool donegrid=false;
+					vector<int> increments;
+					increments.assign(numberofedges,0);
+					int origCOALaicmode=COALaicmode;
+					COALaicmode=0;
+					vector<double> startingscorevector=GetCombinedScore(&NextTree);
+					double currentscore=startingscorevector[0];
+					while (!donegrid) {
+						for (int i=0;i<currentvector.size();i++) {
+							//cout<<currentvector[i]<<" ";
+						}
+						//cout<<endl;
+						//cout<<"donegrid"<<endl;
+						currentnode = n.begin();
+						int nodenumber=0;
+						while (currentnode)
+						{
+							if (currentnode!=rootnode) {
+								currentnode->SetEdgeLength(currentvector[nodenumber]);
+								nodenumber++;
+							}
+							currentnode = n.next();
+						}
+						vector<double> brlenscorevector=GetCombinedScore(&BrlenChangedTree);
+						double brlenscore=brlenscorevector[0]-currentscore;
+						//cout<<"score "<<brlenscore;
+						bool atmargin=false;
+						for (int i=0; i<numberofedges; i++) {
+							if ((increments[i]==0) || (increments[i]==startingnumbersteps-1)) {
+								atmargin=true;
+								
+							}
+							//cout<<" "<<currentvector[i];
+						}
+						if (atmargin) { //if we're bumping up against minimum branchlength, there's nowhere further to expand the grid
+							for (int i=0; i<numberofedges; i++) {
+								if (currentvector[i]==0) {
+									atmargin=false;
+									
+								}
+							}
+						}
+						//cout<<endl;
+						if (atmargin) { //we're at a margin of the space; want to make sure that the region within two lnL is inside this region
+							if (brlenscore<2 && recursions<maxrecursions) { //our region is too small, since points 2 lnL units away from the max are outside the region
+								//message="Starting width of ";
+								//message+=startingwidth;
+								//message+=" was too small, now increasing to ";
+								startingwidth*=1.5;
+								//message+=startingwidth;
+								//PrintMessage();
+								donegrid=true; //break the while(!donegrid) loop; since donecontour isn't done, reinitialize everything
+							}
+						}
+						vector<double> resultvector=currentvector;
+						resultvector.push_back(brlenscore);
+						gridvectors.push_back(resultvector);
+						if (brlenscore<0 && recursions<=maxrecursions) {
+							currentscore=brlenscorevector[0];
+							//message="Better branch length found, restarting contour search";
+							//PrintMessage();
+							//recursions=0; //restart search
+							NextTree.SetRoot(BrlenChangedTree.CopyOfSubtree(BrlenChangedTree.GetRoot()));
+							NextTree.FindAndSetRoot();
+							NextTree.Update();
+							donegrid=true; //break the while(!donegrid) loop; since donecontour isn't done, reinitialize everything
+						}
+						increments[0]++;
+						if (!donegrid) {
+							for (int itemtoexamine=0; itemtoexamine<numberofedges; itemtoexamine++) {
+								if (increments[itemtoexamine]==startingnumbersteps) {
+									if (itemtoexamine<numberofedges-1) { //means there's room to the left
+										increments[itemtoexamine]=0;
+										increments[itemtoexamine+1]++;
+									}
+									else {
+										donegrid=true;
+										donecontour=true;
+									}
+								}
+							}
+						}
+						currentvector.clear();
+						for (int i=0; i<numberofedges; i++) {
+							currentvector.push_back((increments[i]*incrementwidths[i])+minimumvector[i]);
+						}
+						//cout<<"donegrid is "<<donegrid<<" and donecontour is "<<donecontour<<endl;
+					}
+					
+					COALaicmode=origCOALaicmode;
+					
+				}
+				vector<double> totalbrlen;
+				totalbrlen.assign(numberofedges-1,0);
+				int numequaltrees=0;
+				for (int i=0; i<gridvectors.size(); i++) {
+					if (logf_open) {
+						for (int k=0; k<=numberofedges; k++) {
+							logf<<gridvectors[i][k]<<"\t";
+						}
+						logf<<endl<<endl; 
+					}
+					if (gridvectors[i][numberofedges]<=0) {
+						for (int j=0; j<numberofedges; j++) {
+							totalbrlen[j]+=gridvectors[i][j];
+							numequaltrees++;
+						}
+					}
+				}
+				NodeIterator <Node> n (NextTree.GetRoot());
+				NodePtr currentnode = n.begin();
+				NodePtr rootnode=NextTree.GetRoot();
+				int edgenumber=0;
+				while (currentnode)
+				{
+					if (currentnode!=rootnode) {
+						//cout<<"new brlen = "<<totalbrlen[edgenumber]/(numequaltrees*1.0)<<endl;
+						currentnode->SetEdgeLength(totalbrlen[edgenumber]/(numequaltrees*1.0));
+						edgenumber++;
+					}
+					currentnode = n.next();
+				}
+				nextscorevector=GetCombinedScore(&NextTree);
+				nextscore=nextscorevector[0];
+			}
+			
+			
 			//cout<<"NextTree Health"<<endl;
 			NextTree.FindAndSetRoot();
 			NextTree.Update();
@@ -3063,6 +3350,13 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             else {
                 message+="_";
             }
+			if (movefreqvector[5]>0) {
+				message+="b";
+			}
+			if (status) {
+				PrintMessage();
+			}
+			
             if (badgtpcount>0) {
                 message+="\t!!!";
                 message+=badgtpcount;
@@ -9987,6 +10281,9 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
             }
         }
     }
+	if (useCOAL && exportalltrees) {
+		newtree=true; //since brlen might be different
+	}
     if (newtree) {
         FormattedBestTrees.push_back(FormattedNewBestTree);
 		BestConversions.push_back(convertsamplestospecies);
