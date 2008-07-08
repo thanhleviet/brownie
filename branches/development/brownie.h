@@ -97,6 +97,7 @@ public:
     int randomstarts;
 	nxsstring treefilename;
 	bool useCOAL;
+	int contourBrlenToExport;
 	bool exportalltrees;
 	int COALaicmode;
 	double markedmultiplier;
@@ -151,6 +152,8 @@ public:
     bool showtries;
     vector<ContainingTree> RawBestTrees; //Contains all the best trees with just species labels; cleared every time a better tree is found
     vector<ContainingTree> FormattedBestTrees; //Uses samples as labels. Is useful as this way you don't have to remember the convertsamplestospecies for each best tree
+	vector<nxsstring> ContourSearchDescription; //Stores a tree description and tab-delimited file with branch lengths and likelihood scores
+	vector<vector <double> > ContourSearchVector;
 	vector<ContainingTree> BestBranchlengthTreeForThisNextTree; //For optimizing branch lengths
     double bestscore;
 	double bestscorelocal;

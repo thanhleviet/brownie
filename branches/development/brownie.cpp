@@ -271,6 +271,7 @@ void BROWNIE::FactoryDefaults()
     randomstarts=15;
     treefilename="besttrees.tre";
 	useCOAL=false;
+	contourBrlenToExport=2;
 	exportalltrees=true;
 	COALaicmode=1;
 	markedmultiplier=5.0;
@@ -1471,10 +1472,10 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 			CurrentTree.FindAndSetRoot();
 			CurrentTree.Update();
 			CurrentTree.GetNodeDepths();
-			if(logf_open) {
-				logf<<"Now trying with species tree: ";
-				CurrentTree.Write(logf);
-			}
+		//	if(logf_open) {
+		//		logf<<"Now trying with species tree: ";
+		//		CurrentTree.Write(logf);
+		//	}
 		//CurrentTree.ReportTreeHealth();
 		//CurrentTree.Draw(cout);
 			NodeIterator <Node> n (CurrentTree.GetRoot());
@@ -1621,9 +1622,9 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		scorevector.push_back(0);
 		scorevector.push_back(0);
 		//cout<<"neglnlikelihood = "<<neglnlikelihood<<endl;
-		if(logf_open) {
-			logf<<"\t[neglnlikelihood = "<<neglnlikelihood<<" ]"<<endl;
-		}
+		//if(logf_open) {
+		//	logf<<"\t[neglnlikelihood = "<<neglnlikelihood<<" ]"<<endl;
+		//}
 		
 	}
 	else {
@@ -1972,6 +1973,7 @@ double BROWNIE::DoAllAssignments(double bestscore, int maxspecies, ContainingTre
 				GTPScores.clear();
 				StructScores.clear();
 				BestConversions.clear();
+				ContourSearchDescription.clear();
 				//TotalScores.push_back(nextscorevector[0]);
 				//GTPScores.push_back(nextscorevector[1]);
 				//StructScores.push_back(nextscorevector[2]);
@@ -2314,7 +2316,156 @@ if (useCOAL) {
 				
 }
 
-//////////Copied from stuff below////////////////
+			//Contour search
+if (useCOAL) {
+				vector<double> speciestreebranchlengthvector;
+				double startingwidth=4; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
+				double startingnumbersteps=11; //works best if odd
+				int maxrecursions=10;
+				int recursions=0;
+				int numberofedges=0;
+				bool donecontour=false;
+				ContainingTree StartingTreeBrlenMod;
+				while (!donecontour) {
+					recursions++;
+					vector<double> midpointvector;
+					vector<double> incrementwidths;
+					vector<double> currentvector;
+					speciestreebranchlengthvector.clear();
+					ContourSearchVector.clear();
+					StartingTree.FindAndSetRoot();
+					StartingTree.Update();
+					StartingTree.InitializeMissingBranchLengths();
+					StartingTreeBrlenMod.SetRoot(StartingTree.CopyOfSubtree(StartingTree.GetRoot()));
+					StartingTreeBrlenMod.Update();
+					StartingTreeBrlenMod.InitializeMissingBranchLengths();
+					vector<double> speciestreebranchlengthvector;
+					NodeIterator <Node> n (StartingTreeBrlenMod.GetRoot());
+					NodePtr currentnode = n.begin();
+					NodePtr rootnode=StartingTreeBrlenMod.GetRoot();
+					numberofedges=0;
+					while (currentnode)
+					{
+						if (currentnode!=rootnode) {
+							double edgelength=currentnode->GetEdgeLength();
+							if (gsl_isnan(edgelength)) {
+								edgelength=1.0;
+							}
+							speciestreebranchlengthvector.push_back(edgelength); //get midpoint edges
+							double basestep=exp(2.0*log(startingwidth)/(startingnumbersteps-1));
+							double smallestbrlen=edgelength*(pow(basestep,(0-startingnumbersteps+((startingnumbersteps+1.0)/2.0))));
+							midpointvector.push_back(edgelength);
+							currentvector.push_back(smallestbrlen); //start with minimum values, then  move up
+							incrementwidths.push_back(basestep);
+							numberofedges++;
+						}
+						currentnode = n.next();
+					}
+					bool donegrid=false;
+					vector<int> increments;
+					increments.assign(numberofedges,0);
+					int origCOALaicmode=COALaicmode;
+					COALaicmode=0;
+					vector<double> startingscorevector=GetCombinedScore(&StartingTree);
+					double currentscore=startingscorevector[0];
+					while (!donegrid) {
+						currentnode = n.begin();
+						int nodenumber=0;
+						while (currentnode)
+						{
+							if (currentnode!=rootnode) {
+								currentnode->SetEdgeLength(currentvector[nodenumber]);
+								nodenumber++;
+							}
+							currentnode = n.next();
+						}
+						vector<double> brlenscorevector=GetCombinedScore(&StartingTreeBrlenMod);
+						double brlenscore=brlenscorevector[0]-currentscore;
+						bool atmargin=false;
+						for (int i=0; i<numberofedges; i++) {
+							if ((increments[i]==0) || (increments[i]==startingnumbersteps-1)) {
+								atmargin=true;
+								
+							}
+						}
+						if (atmargin) { //if we're bumping up against minimum branchlength, there's nowhere further to expand the grid
+							for (int i=0; i<numberofedges; i++) {
+								if (currentvector[i]==0) {
+									atmargin=false;
+									
+								}
+							}
+						}
+						//cout<<endl;
+						if (atmargin) { //we're at a margin of the space; want to make sure that the region within two lnL is inside this region
+							if (brlenscore<2 && recursions<maxrecursions) { //our region is too small, since points 2 lnL units away from the max are outside the region
+								startingwidth*=1.5;
+								donegrid=true; //break the while(!donegrid) loop; since donecontour isn't done, reinitialize everything
+							}
+						}
+						vector<double> resultvector=currentvector;
+						resultvector.push_back(brlenscore);
+						ContourSearchVector.push_back(resultvector);
+						if (brlenscore<0 && recursions<=maxrecursions) {
+							currentscore=brlenscorevector[0];
+							StartingTree.SetRoot(StartingTreeBrlenMod.CopyOfSubtree(StartingTreeBrlenMod.GetRoot()));
+							StartingTree.FindAndSetRoot();
+							StartingTree.Update();
+							donegrid=true; //break the while(!donegrid) loop; since donecontour isn't done, reinitialize everything
+						}
+						increments[0]++;
+						if (!donegrid) {
+							for (int itemtoexamine=0; itemtoexamine<numberofedges; itemtoexamine++) {
+								if (increments[itemtoexamine]==startingnumbersteps) {
+									if (itemtoexamine<numberofedges-1) { //means there's room to the left
+										increments[itemtoexamine]=0;
+										increments[itemtoexamine+1]++;
+									}
+									else {
+										donegrid=true;
+										donecontour=true;
+									}
+								}
+							}
+						}
+						currentvector.clear();
+						for (int i=0; i<numberofedges; i++) {
+							double newbrlen=midpointvector[i]*(pow(incrementwidths[i],(increments[i]-startingnumbersteps+((startingnumbersteps+1)/2))));
+							currentvector.push_back(newbrlen);
+						}
+					}
+					
+					COALaicmode=origCOALaicmode;
+					
+				}
+				vector<double> totalbrlen;
+				totalbrlen.assign(numberofedges-1,0);
+				int numequaltrees=0;
+				for (int i=0; i<ContourSearchVector.size(); i++) {
+					if (ContourSearchVector[i][numberofedges]<=0) {
+						for (int j=0; j<numberofedges; j++) {
+							totalbrlen[j]+=ContourSearchVector[i][j];
+							numequaltrees++;
+						}
+					}
+				}
+NodeIterator <Node> n (StartingTree.GetRoot());
+NodePtr currentnode = n.begin();
+NodePtr rootnode=StartingTree.GetRoot();
+int edgenumber=0;
+while (currentnode)
+{
+	if (currentnode!=rootnode) {
+						//cout<<"new brlen = "<<totalbrlen[edgenumber]/(numequaltrees*1.0)<<endl;
+		currentnode->SetEdgeLength(totalbrlen[edgenumber]/(numequaltrees*1.0));
+		edgenumber++;
+	}
+	currentnode = n.next();
+}
+nextscorevector=GetCombinedScore(&StartingTree);
+nextscore=nextscorevector[0];
+}
+//////////END Copied from stuff below////////////////
 
 vector<double> bestscorelocalvector=GetCombinedScore(&StartingTree);
 bestscorelocal=bestscorelocalvector[0];
@@ -2338,6 +2489,7 @@ else if (bestscorelocal<bestscore) {
 	GTPScores.clear();
 	StructScores.clear();
 	BestConversions.clear();
+	ContourSearchDescription.clear();
 //	TotalScores.push_back(bestscorelocalvector[0]);
 //	GTPScores.push_back(bestscorelocalvector[1]);
 //	StructScores.push_back(bestscorelocalvector[2]);
@@ -3036,9 +3188,8 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 			//Contour search
 			if (useCOAL) {
 				vector<double> speciestreebranchlengthvector;
-				vector<vector<double> > gridvectors;
-				double startingwidth=0.5; //start by looking at all brlen within 20% of given value
-				double startingnumbersteps=20;
+				double startingwidth=4; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
+				double startingnumbersteps=11; //works best if odd
 				int maxrecursions=10;
 				int recursions=0;
 				int numberofedges=0;
@@ -3046,11 +3197,11 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				while (!donecontour) {
 					recursions++;
 					//cout<<"donecontour"<<endl;
-					vector<double> minimumvector;
+					vector<double> midpointvector;
 					vector<double> incrementwidths;
 					vector<double> currentvector;
 					speciestreebranchlengthvector.clear();
-					gridvectors.clear();
+					ContourSearchVector.clear();
 					NextTree.FindAndSetRoot();
 					NextTree.Update();
 					NextTree.InitializeMissingBranchLengths();
@@ -3071,12 +3222,16 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 								edgelength=1.0;
 							}
 							speciestreebranchlengthvector.push_back(edgelength); //get midpoint edges
-							double mindepth=GSL_MAX(edgelength*(1-startingwidth),0);
-							double maxdepth=edgelength*(1+startingwidth);
+							double basestep=exp(2.0*log(startingwidth)/(startingnumbersteps-1));
+							//cout<<"basestep = "<<basestep<<endl;
+							//brlen if startingnumbersteps=5 and starting width is 4 is edgelength/4, edgelength/2, edgelength, edgelength*2, edgelength*4; aka 2^-2, 2^-1, 
+							//double mindepth=GSL_MAX(edgelength*(1-startingwidth),0);
+							//double maxdepth=edgelength*(1+startingwidth);
 							//cout<<"mindepth = "<<mindepth<<" maxdepth = "<<maxdepth<<endl<<endl;
-							minimumvector.push_back(mindepth);
-							currentvector.push_back(mindepth); //start with minimum values, then  move up
-							incrementwidths.push_back((maxdepth-mindepth)/(startingnumbersteps-1.0));
+							double smallestbrlen=edgelength*(pow(basestep,(0-startingnumbersteps+((startingnumbersteps+1.0)/2.0))));
+							midpointvector.push_back(edgelength);
+							currentvector.push_back(smallestbrlen); //start with minimum values, then  move up
+							incrementwidths.push_back(basestep);
 							numberofedges++;
 						}
 						currentnode = n.next();
@@ -3137,7 +3292,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 						}
 						vector<double> resultvector=currentvector;
 						resultvector.push_back(brlenscore);
-						gridvectors.push_back(resultvector);
+						ContourSearchVector.push_back(resultvector);
 						if (brlenscore<0 && recursions<=maxrecursions) {
 							currentscore=brlenscorevector[0];
 							//message="Better branch length found, restarting contour search";
@@ -3165,8 +3320,12 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 						}
 						currentvector.clear();
 						for (int i=0; i<numberofedges; i++) {
-							currentvector.push_back((increments[i]*incrementwidths[i])+minimumvector[i]);
+							//cout<<midpointvector[i]<<" * ("<<incrementwidths[i]<<"^"<<increments[i]-startingnumbersteps+((startingnumbersteps+1)/2)<<") = ";
+							double newbrlen=midpointvector[i]*(pow(incrementwidths[i],(increments[i]-startingnumbersteps+((startingnumbersteps+1)/2))));
+							currentvector.push_back(newbrlen);
+							//cout<<newbrlen<<" ";
 						}
+						//cout<<endl;
 						//cout<<"donegrid is "<<donegrid<<" and donecontour is "<<donecontour<<endl;
 					}
 					
@@ -3176,16 +3335,18 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				vector<double> totalbrlen;
 				totalbrlen.assign(numberofedges-1,0);
 				int numequaltrees=0;
-				for (int i=0; i<gridvectors.size(); i++) {
-					if (logf_open) {
-						for (int k=0; k<=numberofedges; k++) {
-							logf<<gridvectors[i][k]<<"\t";
-						}
-						logf<<endl<<endl; 
-					}
-					if (gridvectors[i][numberofedges]<=0) {
+				for (int i=0; i<ContourSearchVector.size(); i++) {
+					//if (logf_open) {
+					//	for (int k=0; k<=numberofedges; k++) {
+							//logf<<ContourSearchVector[i][k]<<"\t";
+					//		cout<<ContourSearchVector[i][k]<<"\t";
+					//	}
+						//logf<<endl<<endl; 
+					//cout<<endl;
+					//}
+					if (ContourSearchVector[i][numberofedges]<=0) {
 						for (int j=0; j<numberofedges; j++) {
-							totalbrlen[j]+=gridvectors[i][j];
+							totalbrlen[j]+=ContourSearchVector[i][j];
 							numequaltrees++;
 						}
 					}
@@ -3353,9 +3514,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 			if (movefreqvector[5]>0) {
 				message+="b";
 			}
-			if (status) {
-				PrintMessage();
-			}
+
 			
             if (badgtpcount>0) {
                 message+="\t!!!";
@@ -10290,6 +10449,37 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
 		TotalScores.push_back(scorevector[0]);
 		GTPScores.push_back(scorevector[1]);
 		StructScores.push_back(scorevector[2]);
+		if (useCOAL && ContourSearchVector.size()>0 && contourBrlenToExport>0) {
+			vector<double> particularcombo=ContourSearchVector[0];
+			int numberofbranches=-1+particularcombo.size();
+			nxsstring ContourSearchStringBest="";
+			nxsstring ContourSearchStringOther="";
+			for (int branchcombination=0; branchcombination<ContourSearchVector.size(); branchcombination++) {
+				if (ContourSearchVector[branchcombination][numberofbranches]<=0) { //if the score is the best
+					ContourSearchStringBest+="\n";
+					ContourSearchStringBest+=ContourSearchVector[branchcombination][numberofbranches];
+					for (int branch=0; branch<numberofbranches; branch++) {
+						ContourSearchStringBest+="\t";
+						ContourSearchStringBest+=ContourSearchVector[branchcombination][branch];
+					}
+				}
+				else {
+					ContourSearchStringOther+="\n";
+					ContourSearchStringOther+=ContourSearchVector[branchcombination][numberofbranches];
+					for (int branch=0; branch<numberofbranches; branch++) {
+						ContourSearchStringOther+="\t";
+						ContourSearchStringOther+=ContourSearchVector[branchcombination][branch];
+					}
+				}
+			}
+			if (contourBrlenToExport==1) {
+				ContourSearchDescription.push_back(ContourSearchStringBest);
+			}
+			else if (contourBrlenToExport==2) {
+				ContourSearchStringBest+=ContourSearchStringOther;
+				ContourSearchDescription.push_back(ContourSearchStringBest);
+			}
+		}
     }
     for (int k=0; k<FormattedBestTrees.size(); k++) {
         (FormattedBestTrees[k]).Update();
@@ -10313,6 +10503,9 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
 				numspecies=GSL_MAX(numspecies,BestConversions[i][j]);
 			}
 			outtreef<<" ) ]\n";
+			if (useCOAL && contourBrlenToExport && ContourSearchDescription.size()>i) {
+				outtreef<<"["<<endl<<ContourSearchDescription[i]<<endl<<"]"<<endl;
+			}
 			if (jackknifesearch) {
 				jackknifetreestooutput+="tree jackrep";
 				jackknifetreestooutput+=jackrep;
