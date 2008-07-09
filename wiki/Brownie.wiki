@@ -1,4 +1,4 @@
-#summary Brownie is a program originally for estimating rates of continuous character evolution, now expanded
+#summary Brownie is a program originally for estimating rates of continuous character evolution, now expanded (in development branch)
 
 = Introduction =
 
