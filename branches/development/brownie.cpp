@@ -272,8 +272,11 @@ void BROWNIE::FactoryDefaults()
     treefilename="besttrees.tre";
 	useCOAL=false;
 	contourBrlenToExport=2;
+	contourMaxRecursions=20;
+	contourstartingnumbersteps=15;
+	contourstartingwidth=10;
 	exportalltrees=true;
-	COALaicmode=1;
+	COALaicmode=4;
 	markedmultiplier=5.0;
 	brlensigma=1.0;
 	numbrlenadjustments=20;
@@ -1189,8 +1192,17 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			else {
 				message+="No";
 			}
-			message+="\nAIC_mode       0|1|2|3|4                               ";
+			message+="\nAIC_mode      0|1|2|3|4                              ";
 			message+=COALaicmode;
+			message+="\nGridWidth     <double>                               ";
+			message+=contourstartingwidth;
+			message+="\nGridSize      <integer-value>                        ";
+			message+=contourstartingnumbersteps;
+			message+="\nMaxRecursions <integer-value>                        ";
+			message+=contourMaxRecursions;
+			message+="\nBranch_export 0|1|2                                  ";
+			message+=contourBrlenToExport;
+			
             message+="\n\nNReps: Number of random starting species trees to use";
             //message+="\nTimeLimit: Limit search to X seconds";
             //message+="\nClock: Count seconds for time limit using actual elapsed time ('Wall'->Clock on a wall) or CPU time"; //NOte to self: see discussion online of time() fn and clock() fn in C++
@@ -1207,6 +1219,8 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			message+="\nSubsample: How extensively to try taxon reassignments on leaf splits. \n\tA value of 1 means try all of the possible reassignments, \n\ta value of 2 means try the square root of all the possible assignments,\n\t3 means the cube root, etc. A higher number means a faster but less effective search.\n\tThe program won't let you try fewer than 10 assignments on average.";
 			message+="\nCOAL: Use Degnan's program COAL to optimize the likelihood of the species delimitation and tree rather than the semiparametric penalty function";
 			message+="\nAIC_mode: When using COAL, use the 0: likelihood as the penalty term, 1: AIC value (k=number of species), 2: AICc with n=number of genes, 3: AICc with n=number of samples, 4: AICc with n=(number of genes) * (number of samples)";
+			message+="\nGridWidth, GridSize, MaxRecursions all affect grid search";
+			message+="\nBranch_export: if set to 0, returns a single estimate of the best branch lengths on the species tree. If set to 1, returns a table of equally-good branch lengths. If set to 2, returns a table of the best and neighboring branch lengths, suitable for doing a contour plot of score versus branch lengths";
             PrintMessage();
             finishexecuting=false;
         }
@@ -1335,6 +1349,85 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			}
 			
 		}
+		else if (token.Abbreviation("BRANch_export")) {
+			nxsstring numbernexus;
+            numbernexus = GetNumber(token);
+            int contourBrlenToExportraw=atoi( numbernexus.c_str() ); //convert to int
+			if (contourBrlenToExportraw==0) {
+				message="Just export a single branch length for each best species topology";
+				contourBrlenToExport=contourBrlenToExportraw;
+				PrintMessage();
+			}
+			else if (contourBrlenToExportraw==1) {
+				message="Export a table of equally-good branch lengths for each best species topology";
+				contourBrlenToExport=contourBrlenToExportraw;
+				PrintMessage();
+			}
+			else if (contourBrlenToExportraw==2) {
+				message="Export a table from a grid of possible branch lengths, including suboptimal ones (good for plotting contours)";
+				contourBrlenToExport=contourBrlenToExportraw;
+				PrintMessage();
+			}
+			
+			else {
+				errormsg="You entered an unrecognized option for Branch_export: should be an integer 0-2, but you entered ";
+				errormsg+=contourBrlenToExportraw;
+				throw XNexus( errormsg);
+			}
+		}
+		else if(token.Abbreviation("MAXRecursions")) {
+            nxsstring numbernexus;
+			 numbernexus = GetFileName(token);
+			int contourMaxRecursionsraw=atoi(numbernexus.c_str() );
+			if (contourMaxRecursionsraw>0) {
+				message="Max recursions per grid search set to ";	
+				contourMaxRecursions=contourMaxRecursionsraw;
+				message+=contourMaxRecursions;
+				PrintMessage();
+			}
+			else {
+				errormsg="You entered an inappropriate option for MaxRecursions: should be an integer >0, but you entered ";
+				errormsg+=contourMaxRecursionsraw;
+				throw XNexus( errormsg);
+			}
+        }		
+		else if(token.Abbreviation("GRIDSize")) {
+            nxsstring numbernexus;
+			numbernexus = GetFileName(token);
+			int contourstartingnumberstepsraw=atoi(numbernexus.c_str() );
+			if (contourstartingnumberstepsraw>0) {
+				message="Number of steps on each axis in grid search set to ";	
+				if (GSL_IS_ODD (contourstartingnumberstepsraw)==0) {
+					contourstartingnumberstepsraw++;
+				}
+				contourstartingnumbersteps=1.0*contourstartingnumberstepsraw; //is actually a double
+				message+=contourstartingnumbersteps;
+				message+=" even numbers increased to next odd number (so the current best value is the center of the grid)";
+				PrintMessage();
+			}
+			else {
+				errormsg="You entered an inappropriate option for GridSize: should be an integer >0, but you entered ";
+				errormsg+=contourstartingnumberstepsraw;
+				throw XNexus( errormsg);
+			}
+        }		
+		else if(token.Abbreviation("GRIDWidth")) {
+            nxsstring numbernexus;
+			numbernexus = GetFileName(token);
+			double contourstartingwidthraw=atof(numbernexus.c_str() );
+			if (contourstartingwidthraw>0) {
+				message="Starting maximum branch length for each branch in grid search set to ";	
+				contourstartingwidth=contourstartingwidthraw;
+				message+=contourstartingwidth;
+				message+=" times the best length";
+				PrintMessage();
+			}
+			else {
+				errormsg="You entered an inappropriate option for GridWidth: should be a number >0, but you entered ";
+				errormsg+=contourstartingwidthraw;
+				throw XNexus( errormsg);
+			}
+        }	
         else if( token.Abbreviation("MoveFreq") ) {
             token.GetNextToken();
             token.GetNextToken(); //eat the equals sign
@@ -1476,7 +1569,6 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		//		logf<<"Now trying with species tree: ";
 		//		CurrentTree.Write(logf);
 		//	}
-		//CurrentTree.ReportTreeHealth();
 		//CurrentTree.Draw(cout);
 			NodeIterator <Node> n (CurrentTree.GetRoot());
 			cur = n.begin();
@@ -2297,9 +2389,10 @@ if (useCOAL) {
 				StartingTree.FindAndSetRoot();
 				StartingTree.Update();
 				StartingTree.InitializeMissingBranchLengths();
-				for (int brlenrep=0; brlenrep<10*(numbrlenadjustments-1); brlenrep++) {
+				for (int brlenrep=0; brlenrep<20*(numbrlenadjustments-1); brlenrep++) {
 					ContainingTree StartingTreeBrlenMod;
 					StartingTreeBrlenMod.SetRoot(StartingTree.CopyOfSubtree(StartingTree.GetRoot()));
+					StartingTreeBrlenMod.InitializeMissingBranchLengths();
 					StartingTreeBrlenMod.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
 					vector<double> brlenscorevector=GetCombinedScore(&StartingTreeBrlenMod);
 					if (brlenscorevector[0]<=bestscorelocal) {
@@ -2319,9 +2412,9 @@ if (useCOAL) {
 			//Contour search
 if (useCOAL) {
 				vector<double> speciestreebranchlengthvector;
-				double startingwidth=4; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
-				double startingnumbersteps=11; //works best if odd
-				int maxrecursions=10;
+				double startingwidth=contourstartingwidth; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
+				double startingnumbersteps=contourstartingnumbersteps; //works best if odd
+				int maxrecursions=contourMaxRecursions;
 				int recursions=0;
 				int numberofedges=0;
 				bool donecontour=false;
@@ -2369,6 +2462,7 @@ if (useCOAL) {
 					vector<double> startingscorevector=GetCombinedScore(&StartingTree);
 					double currentscore=startingscorevector[0];
 					while (!donegrid) {
+						//cout<<"Looping over grid tries"<<endl;
 						currentnode = n.begin();
 						int nodenumber=0;
 						while (currentnode)
@@ -2412,6 +2506,9 @@ if (useCOAL) {
 							StartingTree.FindAndSetRoot();
 							StartingTree.Update();
 							donegrid=true; //break the while(!donegrid) loop; since donecontour isn't done, reinitialize everything
+							if (showtries) {
+								cout<<"Better branch lengths found in grid search"<<endl;
+							}
 						}
 						increments[0]++;
 						if (!donegrid) {
@@ -3167,6 +3264,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				NextTree.InitializeMissingBranchLengths();
 				for (int brlenrep=0; brlenrep<numbrlenadjustments; brlenrep++) {
 					BrlenChangedTree.SetRoot(NextTree.CopyOfSubtree(NextTree.GetRoot()));
+					BrlenChangedTree.InitializeMissingBranchLengths();
 					BrlenChangedTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
 					vector<double> brlenscorevector=GetCombinedScore(&BrlenChangedTree);
 					if (brlenscorevector[0]<=nextscore) {
@@ -3188,9 +3286,9 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 			//Contour search
 			if (useCOAL) {
 				vector<double> speciestreebranchlengthvector;
-				double startingwidth=4; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
-				double startingnumbersteps=11; //works best if odd
-				int maxrecursions=10;
+				double startingwidth=contourstartingwidth; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
+				double startingnumbersteps=contourstartingnumbersteps; //works best if odd
+				int maxrecursions=contourMaxRecursions;
 				int recursions=0;
 				int numberofedges=0;
 				bool donecontour=false;
@@ -3302,6 +3400,10 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 							NextTree.FindAndSetRoot();
 							NextTree.Update();
 							donegrid=true; //break the while(!donegrid) loop; since donecontour isn't done, reinitialize everything
+							if (showtries) {
+								cout<<"Better branch lengths found in grid search"<<endl;
+							}
+							
 						}
 						increments[0]++;
 						if (!donegrid) {
@@ -10522,7 +10624,18 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
 				outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies<<"; Score: "<<TotalScores[i]<<" = "<<(1-structwt)<<" x GTP ("<<GTPScores[i]<<") + "<<structwt<<" x Struct ("<<StructScores[i]<<") ] [&R] ";
 			}
 			else {
-				outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies<<"; NegLnL: "<<TotalScores[i]<<" ] [&R] ";
+				outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies;
+				if (COALaicmode==0) {
+					outtreef<<"; NegLnL: ";
+				}
+				else if (COALaicmode==1) {
+					outtreef<<"; AIC: ";
+				}
+				else {
+					outtreef<<"; AICc: ";
+				}
+				
+				outtreef<<TotalScores[i]<<" ] [&R] ";
 			}
             outtreef<<ReturnFinalSpeciesTree(FormattedBestTrees[i]);
             outtreef<<endl;

@@ -1382,7 +1382,38 @@ void ContainingTree::InitializeMissingBranchLengths()
 		while (currentnode)
 		{
 			if (((currentnode->GetEdgeLength())==0) || ((currentnode->GetEdgeLength())!=(currentnode->GetEdgeLength())) || gsl_isnan(currentnode->GetEdgeLength()) || gsl_isinf(currentnode->GetEdgeLength())) { //test for ==0 or ==nan
-				currentnode->SetEdgeLength(1.0);
+				double totalbrlen=0;
+				double countofbranches=0;
+				if (currentnode->GetAnc()!=NULL) {
+					if ((((currentnode->GetAnc())->GetEdgeLength())==0) || (((currentnode->GetAnc())->GetEdgeLength())!=((currentnode->GetAnc())->GetEdgeLength())) || gsl_isnan((currentnode->GetAnc())->GetEdgeLength()) || gsl_isinf((currentnode->GetAnc())->GetEdgeLength())) {
+					}
+					else {
+						totalbrlen+=(currentnode->GetAnc())->GetEdgeLength();
+						countofbranches++;
+					}
+				}
+				if (currentnode->GetSibling()!=NULL) {
+					if ((((currentnode->GetSibling())->GetEdgeLength())==0) || (((currentnode->GetSibling())->GetEdgeLength())!=((currentnode->GetSibling())->GetEdgeLength())) || gsl_isnan((currentnode->GetSibling())->GetEdgeLength()) || gsl_isinf((currentnode->GetSibling())->GetEdgeLength())) {
+					}
+					else {
+						totalbrlen+=(currentnode->GetSibling())->GetEdgeLength();
+						countofbranches++;
+					}
+				}
+				if (currentnode->GetChild()!=NULL) {
+					if ((((currentnode->GetChild())->GetEdgeLength())==0) || (((currentnode->GetChild())->GetEdgeLength())!=((currentnode->GetChild())->GetEdgeLength())) || gsl_isnan((currentnode->GetChild())->GetEdgeLength()) || gsl_isinf((currentnode->GetChild())->GetEdgeLength())) {
+					}
+					else {
+						totalbrlen+=(currentnode->GetChild())->GetEdgeLength();
+						countofbranches++;
+					}
+				}
+				double newlength=1.0;
+				if (countofbranches>0) {
+					newlength=totalbrlen/countofbranches; //assume missing brlen similar to that of neighbors
+				}
+				currentnode->SetEdgeLength(newlength);
+				
 			}
 			currentnode = n.next();
 		}

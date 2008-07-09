@@ -98,6 +98,9 @@ public:
 	nxsstring treefilename;
 	bool useCOAL;
 	int contourBrlenToExport;
+	int contourMaxRecursions;
+	double contourstartingnumbersteps;
+	double contourstartingwidth;
 	bool exportalltrees;
 	int COALaicmode;
 	double markedmultiplier;
