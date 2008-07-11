@@ -977,7 +977,16 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
         if (AncestralNode->GetChild()==SelectedNode) { //Selected Node is a child
             AncestralNode->SetChild(DescendantNode);
             DescendantNode->SetAnc(AncestralNode);
-            DescendantNode->SetSibling(SelectedNode->GetSibling());
+			if ((SelectedNode->GetSibling())!=NULL) {
+				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
+				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}			
+			NodePtr SibNode=DescendantNode->GetSibling();
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				SibNode=SibNode->GetSibling();
+			}
             SelectedNode->SetSibling(NULL);
             SelectedNode->SetAnc(NULL);
         }
@@ -988,7 +997,16 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
 			}
             LinkingNode->SetSibling(DescendantNode); //So, move the sibiling link over one (even if it's null)
             DescendantNode->SetAnc(AncestralNode);
-            DescendantNode->SetSibling(SelectedNode->GetSibling());
+			if ((SelectedNode->GetSibling())!=NULL) {
+				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
+				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}			
+			NodePtr SibNode=DescendantNode->GetSibling();
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				SibNode=SibNode->GetSibling();
+			}
             SelectedNode->SetSibling(NULL);
             SelectedNode->SetAnc(NULL);
         }

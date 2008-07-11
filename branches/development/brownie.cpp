@@ -1294,22 +1294,7 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
             }
             else {
                 useCOAL=true;
-				minnumspecies=GSL_MAX(minnumspecies,2); //because COAL fails with fewer than two species
-				message="Note that the minimum number of species to return has now been set to ";
-				message+=minnumspecies;
-				message+=", not the default 1, due to issues with COAL";
-				/*if (movefreqvector[5]==0) {
-					message+="\nChanging the movefreq vector to allow branch swaps";
-					for (int i=0; i<5; i++) {
-						movefreqvector[i]=movefreqvector[i]*0.8;
-					}
-					movefreqvector[5]=0.2;
-				} */
-				//minsamplesperspecies=1;
-				//message="Note that the minimum number of samples per species has now been set to ";
-				//message+=minsamplesperspecies;
-				//message+=", not the default 3, since COAL permits this (unlike the semiparametric approach)";
-				
+				message="This will use COAL for the search";
 				PrintMessage();
             }
         }
@@ -1538,24 +1523,48 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 	vector<double> scorevector;
 	bool calculatescore=true;
 	if (useCOAL) {
+		int maxspecies=0;
 		int currentnumberofspecies=0;
 		float neglnlikelihood=GSL_POSINF;
-		if (minsamplesperspecies>1) {
-			int maxspecies=0;
-			for (int i=0;i<convertsamplestospecies.size();i++) {
-				maxspecies=GSL_MAX(maxspecies,convertsamplestospecies[i]);
-			}
-			vector<int> speciesvector(maxspecies,0);
-			for (int i=0;i<convertsamplestospecies.size();i++) {
-				speciesvector[(convertsamplestospecies[i])-1]++;
-			}
-			for (int i=0;i<speciesvector.size();i++) {
-				if (speciesvector[i]<minsamplesperspecies) {
-					calculatescore=false;
-				}
-			}		
+		
+		for (int i=0;i<convertsamplestospecies.size();i++) {
+			maxspecies=GSL_MAX(maxspecies,convertsamplestospecies[i]);
 		}
-		if (calculatescore) {
+		vector<int> speciesvector(maxspecies,0);
+		for (int i=0;i<convertsamplestospecies.size();i++) {
+			speciesvector[(convertsamplestospecies[i])-1]++;
+		}
+		for (int i=0;i<speciesvector.size();i++) {
+			if (speciesvector[i]<minsamplesperspecies) {
+				calculatescore=false;
+			}
+		}		
+		if (calculatescore && maxspecies==1) { //COAL can't calculate probability of gene tree on species tree with one species, so use Harding 1971 equation 5.3 to do it manually
+			neglnlikelihood=0;
+			for (int chosentreenum=0; chosentreenum<trees->GetNumTrees(); chosentreenum++) { //loop over all the gene trees
+				Tree CurrentGeneTreeTreeFmt=intrees.GetIthTree(chosentreenum);
+				CurrentGeneTreeTreeFmt.Update(); //sets weights
+				NodeIterator <Node> n (CurrentGeneTreeTreeFmt.GetRoot()); //starts at leaves and works down
+				double probability=1;
+				cur = n.begin();
+				while (cur) {
+					if (!(cur->IsLeaf())) {
+						int Q=(cur->GetChild())->GetWeight();
+						int R=((cur->GetChild())->GetSibling())->GetWeight();
+						int N=R+Q;
+						probability*=2*(gsl_sf_fact(R))*(gsl_sf_fact(Q))/((N-1.0)*gsl_sf_fact(N)); //in Harding's equation, we calculate [Pl{Q] and Pl[R] when we are at the child nodes
+						//cout<<"probability now "<<probability<<" with Q="<<Q<<" and R="<<R<<endl;
+					}
+					//else {
+					//	cout<<"Leaf "<<cur->GetLabel()<<endl;
+					//}
+					cur = n.next();
+				}
+				neglnlikelihood+=-1.0*log(probability);
+				//cout<<"neglnlikelihood now "<<neglnlikelihood<<endl<<endl;
+			}
+		}
+		else if (calculatescore && maxspecies>1) {
 		//export the species tree
 			nxsstring coalspecies="coalspecies.txt";
 
@@ -2384,10 +2393,9 @@ if (useCOAL) {
 
 //////////Copied from stuff below////////////////
 			//brlen optimization
-if (useCOAL) {
-	
-				StartingTree.FindAndSetRoot();
-				StartingTree.Update();
+StartingTree.FindAndSetRoot();
+StartingTree.Update();
+if (useCOAL && StartingTree.GetNumLeaves()>1) {
 				StartingTree.InitializeMissingBranchLengths();
 				for (int brlenrep=0; brlenrep<20*(numbrlenadjustments-1); brlenrep++) {
 					ContainingTree StartingTreeBrlenMod;
@@ -2410,7 +2418,7 @@ if (useCOAL) {
 }
 
 			//Contour search
-if (useCOAL) {
+if (useCOAL  && StartingTree.GetNumLeaves()>1) {
 				vector<double> speciestreebranchlengthvector;
 				double startingwidth=contourstartingwidth; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
 				double startingnumbersteps=contourstartingnumbersteps; //works best if odd
@@ -3255,12 +3263,12 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 
             scoretype="\t";
             bool modifiedscoretype=false;
-			
+			NextTree.FindAndSetRoot();
+			NextTree.Update();
+
 			
 			//brlen optimization
-			if (useCOAL) {
-				NextTree.FindAndSetRoot();
-				NextTree.Update();
+			if (useCOAL && NextTree.GetNumLeaves()>1) { //only do this is there are at least two species (brlen doesn't matter for single species);
 				NextTree.InitializeMissingBranchLengths();
 				for (int brlenrep=0; brlenrep<numbrlenadjustments; brlenrep++) {
 					BrlenChangedTree.SetRoot(NextTree.CopyOfSubtree(NextTree.GetRoot()));
@@ -3284,7 +3292,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 			 
 			
 			//Contour search
-			if (useCOAL) {
+			if (useCOAL  && NextTree.GetNumLeaves()>1) {
 				vector<double> speciestreebranchlengthvector;
 				double startingwidth=contourstartingwidth; //start by looking at all brlen between pointestimate/startingwidth and startingwidth*pointestimated
 				double startingnumbersteps=contourstartingnumbersteps; //works best if odd
@@ -3692,6 +3700,69 @@ PrintMessage();
 gsl_matrix_free(TaxonDistance);
 gsl_matrix_free(TaxonProportDistance);
 }
+
+
+void BROWNIE::DoDettmanCollapse()
+{
+	//This just collapses branches on a partially-resolved input tree (the only branches are "independent evolutionary lineages") so that each sample is in a species. Assumes input tree has all branches but "independent evolutionary lineages" (and terminals) collapsed
+	//basically, every taxon should be connecting to a branch with only taxa as descendants
+	ContainingTree TreeToCollapse;
+	TreeToCollapse.SetRoot((intrees.GetIthTree(chosentree-1)).CopyOfSubtree((intrees.GetIthTree(chosentree-1)).GetRoot()));
+	bool isokay=false;
+	while (!isokay) {
+		TreeToCollapse.FindAndSetRoot();
+		TreeToCollapse.Update();
+		//TreeToCollapse.ReportTreeHealth();
+		isokay=true;
+		NodeIterator <Node> d (TreeToCollapse.GetRoot());
+		NodePtr detnode = d.begin();
+		while (detnode)
+		{
+			//cout<<"detnode is "<<detnode<<endl;
+			if (isokay) {
+				if (detnode->IsLeaf()) {
+					NodePtr ancnode=detnode->GetAnc();
+			//now make sure children of ancnode are all leaves
+					if (ancnode) {
+						NodePtr nodetotest=ancnode->GetChild();
+						while (nodetotest!=NULL && isokay) {
+							//cout<<"testing "<<nodetotest;
+							if (!(nodetotest->IsLeaf())) {
+								isokay=false;
+								TreeToCollapse.SuppressInternalNode(nodetotest);
+								//cout<<" delete below"<<endl;
+							}
+							else {
+								nodetotest=nodetotest->GetSibling();
+								//cout<<" okay"<<endl;
+							}
+						}
+					}
+				}
+			}
+			if (isokay) {
+				detnode = d.next();
+			}
+			else {
+				break;
+			}
+		}
+	}
+	TreeToCollapse.FindAndSetRoot();
+	TreeToCollapse.Update();
+	//TreeToCollapse.ReportTreeHealth();
+	ofstream dettf;
+	nxsstring dettfile="dettman.tre";
+	dettf.open(dettfile.c_str());
+	dettf<<"#nexus\nbegin trees;\n"; 
+	dettf<<"tree collapsed = [&R]  ";
+	TreeToCollapse.Write(dettf);
+	dettf<<endl<<"end;";
+	dettf.close();
+	message="Collapsed tree has been saved to dettman.tre";
+	PrintMessage();
+}
+
 
 //gives total score for structure within each putative species
 double BROWNIE::GetTripletScore(ContainingTree *SpeciesTreePtr) { //Note that excess structure requires four or more individuals per species
@@ -11032,6 +11103,9 @@ void BROWNIE::Read( NexusToken& token )
         }
         else if( token.Abbreviation("HEUristicsearch") ) {
             HandleHeuristicSearch( token );
+        }
+		else if( token.Abbreviation("DETTman") ) {
+            DoDettmanCollapse( );
         }
 		else if( token.Abbreviation("JAckknife") ) {
 			jackknifesearch=true;
