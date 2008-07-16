@@ -1667,7 +1667,8 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 					returncodefailurecount++;
 					coalreturncode=system("coal > /dev/null");
 					if (returncodefailurecount>100) {
-						cout<<"Had >100 failures of COAL"<<endl;
+						errormsg="Had over 100 failures of COAL";
+						throw XNexus( errormsg);
 						break;
 					}
 				}
