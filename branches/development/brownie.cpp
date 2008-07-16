@@ -1662,7 +1662,15 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		//cout<<"Starting to call coal"<<endl;
 			int coalreturncode=-1;
 			if (currentnumberofspecies>0) { //just to head off a weird error
-				coalreturncode=system("coal > /dev/null");
+				int returncodefailurecount=-1;
+				while (coalreturncode!=0) {
+					returncodefailurecount++;
+					coalreturncode=system("coal > /dev/null");
+					if (returncodefailurecount>100) {
+						cout<<"Had >100 failures of COAL"<<endl;
+						break;
+					}
+				}
 			}
 		//cout<<"Done calling  coal, now parsing"<<endl;
 		//cout <<"coal returncode is "<<coalreturncode<<endl;
