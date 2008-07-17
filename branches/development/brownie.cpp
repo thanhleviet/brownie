@@ -271,6 +271,8 @@ void BROWNIE::FactoryDefaults()
     randomstarts=15;
     treefilename="besttrees.tre";
 	useCOAL=false;
+	useMS=false;
+	msbasereps=100000;
 	contourBrlenToExport=2;
 	contourMaxRecursions=20;
 	contourstartingnumbersteps=15;
@@ -1192,6 +1194,14 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			else {
 				message+="No";
 			}
+			message+="\nMS:        No|Yes                                  ";
+			if (useMS) {
+				message+="Yes";
+			}
+			else {
+				message+="No";
+			}
+			
 			message+="\nAIC_mode      0|1|2|3|4                              ";
 			message+=COALaicmode;
 			message+="\nGridWidth     <double>                               ";
@@ -1294,10 +1304,34 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
             }
             else {
                 useCOAL=true;
+				useMS=false;
 				message="This will use COAL for the search";
 				PrintMessage();
+				if (movefreqvector[5]==0) {
+					for (int i=0; i<5; i++) {
+						movefreqvector[i]=movefreqvector[i]*0.8;
+					}
+					movefreqvector[5]=0.2;
+					message="Now allocating 20% of moves to branch length changes";
+					PrintMessage();
+				}
+				
             }
         }
+		else if( token.Abbreviation("MS") ) {
+            nxsstring yesnoreplace=GetFileName(token);
+            if (yesnoreplace[0] == 'n' || yesnoreplace[0] == 'N') {
+                useMS=false;
+            }
+            else {
+                useMS=true;
+				useCOAL=false;
+				message="This will use ms for the search";
+				PrintMessage();
+				
+            }
+        }
+		
 		else if (token.Abbreviation("AIC_mode")) {
 			nxsstring numbernexus;
             numbernexus = GetNumber(token);
@@ -1737,6 +1771,210 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 		//}
 		
 	}
+	else if (useMS) {
+		double neglnlikelihood=0.0;
+		//ms $nsamples $ntrees -T -I 2 $nsamplessp1 $nsamplessp2 -ej $splittime 1 2
+		//echo "cat" | grep "\(cat\|dog\)"
+		//Convert species tree to MS format
+		ContainingTree CurrentTree=*SpeciesTreePtr;
+		CurrentTree.FindAndSetRoot();
+		CurrentTree.Update();
+		CurrentTree.GetNodeDepths();
+		int numspecies=CurrentTree.GetNumLeaves();		
+		int ntax=taxa->GetNumTaxonLabels();
+		nxsstring msstring="ms ";
+		msstring+=ntax;
+		msstring+=" ";
+		msstring+=msbasereps; //number of trees to generate
+		msstring+=" -T -I ";
+		msstring+=numspecies;
+		msstring+=" ";
+		vector <int> samplesperspecies;
+		vector <nxsstring> labelswithinspecies;
+		double numberofpermutations=1;
+		int previoustotal=0;
+		for (int currentspecies=1; currentspecies<=numspecies; currentspecies++) {
+			int samplecountthisspecies=0;
+			nxsstring labelregex="\\(";
+			for (int currentsample=0; currentsample<ntax; currentsample++) {
+				if (convertsamplestospecies[currentsample]==currentspecies) {
+					samplecountthisspecies++;
+				}
+			}
+			msstring+=samplecountthisspecies;
+			samplesperspecies.push_back(samplecountthisspecies);
+			for (int i=1; i<=samplecountthisspecies; i++) {
+				if (i>1) {
+					labelregex+="\\|";
+				}
+				labelregex+=i+previoustotal;
+				
+			}
+			labelregex+="\\):[0-9]*.[0-9]*"; //ms exports brlen, too
+			labelswithinspecies.push_back(labelregex);
+			previoustotal+=samplecountthisspecies;
+			numberofpermutations*=gsl_sf_fact(samplecountthisspecies);
+			msstring+=" ";
+		}
+		NodeIterator <Node> n (CurrentTree.GetRoot());
+		//loop once to get MS string
+		cur = n.begin();
+		while (cur) {
+			if (cur->IsLeaf()) {
+				int speciesnumber;
+				nxsstring specieslabel=cur->GetLabel();
+				string speciesstring=specieslabel.c_str();
+				size_t index = speciesstring.find('t');
+				speciesstring.erase(index,5); //erase "taxon"
+				cur->SetLabel(speciesstring);
+			}
+			else {
+				//assumes binary, ultrametric tree
+				int childid=atoi(((cur->GetChild())->GetLabel()).c_str());
+				int sibid=atoi((((cur->GetChild())->GetSibling())->GetLabel()).c_str());
+				nxsstring newlabel="";
+				newlabel+=GSL_MIN(childid,sibid);
+				cur->SetLabel(newlabel);
+				double splittime=0;
+				NodePtr childnode=cur->GetChild();
+				while (childnode!=NULL) {
+					splittime+=childnode->GetEdgeLength();
+					childnode=childnode->GetChild();
+				}
+				msstring+="-ej ";
+				msstring+=splittime;
+				msstring+=" ";
+				msstring+=GSL_MAX(childid,sibid);
+				msstring+=" ";
+				msstring+=GSL_MIN(childid,sibid);
+				msstring+=" ";
+			}
+			cur = n.next();
+		}
+		
+		//rather than looking for exact match, get probabilities of given topology with all possible permutations of labels of samples from a given species onto ms taxon numbers, then divide by number of such permutations
+		
+		
+		//loop over all the gene trees
+		for (int chosentreenum=0; chosentreenum<trees->GetNumTrees(); chosentreenum++) { //loop over all the gene trees
+			nxsstring grepstring="";
+			int numberintraspecificcherries=0;
+			Tree CurrentGeneTreeTreeFmt=intrees.GetIthTree(chosentreenum);
+			NodeIterator <Node> n (CurrentGeneTreeTreeFmt.GetRoot());
+			//traverse once to count intraspecific sister cherries
+			cur = n.begin();
+			while (cur) {
+				if (cur->IsLeaf()) {
+					NodePtr sister=cur->GetSibling();
+					if (sister!=NULL) {
+						if (sister->IsLeaf()) {
+							//cout<<cur->GetLabel()<<" with "<<sister->GetLabel()<<endl;
+							if (convertsamplestospecies[taxa->FindTaxon(cur->GetLabel())]==convertsamplestospecies[taxa->FindTaxon(sister->GetLabel())]) { //they have the same species (though node labels are changed, we do the one that's a child before its sib)
+								numberintraspecificcherries++;
+							}
+						}
+					}
+				}
+				cur = n.next();
+			}
+			
+			//now get the grep lines
+			cur = n.begin();
+			while (cur) {
+				if (cur->IsLeaf()) {
+					cur->SetLabel(labelswithinspecies[-1+convertsamplestospecies[taxa->FindTaxon(cur->GetLabel())]]); //gets regex for tip labels
+				}
+				else {
+					nxsstring combinedstring="";
+					nxsstring leftchild=(cur->GetChild())->GetLabel();
+					nxsstring rightchild=((cur->GetChild())->GetSibling())->GetLabel();
+					nxsstring additionalregex="(\\(";
+					additionalregex+=leftchild;
+					additionalregex+=",";
+					additionalregex+=rightchild;
+					additionalregex+="\\|";
+					additionalregex+=rightchild;
+					additionalregex+=",";
+					additionalregex+=leftchild;
+					additionalregex+="\\))";
+					if (cur->GetAnc()!=NULL) { // not root
+						additionalregex+=":*[0-9]*.[0-9]*";
+					}
+					else { //originally, did this at each node, with the idea that from MS, you first filter out the lines that don't match a cherry, then filter from that filtered set, etc., thinking it would be faster than just using the regex at the root. Actually, just using the regex at the root was faster, so I do that.
+						grepstring+=" | grep -c \"";
+						grepstring+=additionalregex;
+						grepstring+="\"";
+					}
+					cur->SetLabel(additionalregex);
+				}
+				cur = n.next();
+			}
+			nxsstring finalsystemcall=msstring;
+			finalsystemcall+=grepstring;
+			nxsstring msinputfile="mscount.txt";
+			finalsystemcall+=" > ";
+			finalsystemcall+=msinputfile;
+			//cout<<finalsystemcall<<endl;
+			int returnattempts=-1;
+			int returncode=-1;
+			while (returncode!=0) {
+				if (returnattempts>0) {
+					system("rm mscount.txt");
+				}
+				returncode=system(finalsystemcall.c_str());
+				returnattempts++;
+				if (returnattempts>5) {
+					message="Had over 5 failures of MS, calling\n\n";
+					message+=finalsystemcall;
+					message+="\n";
+					PrintMessage();
+					//throw XNexus( errormsg);
+					break;
+				}
+				if (returncode!=0) {
+					message="Warning: ms returned error code ";
+					message+=returncode;
+					PrintMessage();
+				}
+				
+			}
+		//	if (returncode==0) {
+				ifstream msin;
+				msin.open( msinputfile.c_str(), ios::binary | ios::in );
+				if (msin) {
+					char inputitem [COMMAND_MAXLEN];
+					msin>>inputitem;
+					double numbermatches=atof(inputitem);
+					neglnlikelihood+=-1.0*(log(GSL_MAX(numbermatches,0.01))-log(msbasereps)-log((1.0*numberofpermutations)/(1.0*numberintraspecificcherries))); //numbermatches is an integer, but log(0) is infinite. Idea is to make this a really big but not infinite number. Probability of a gene tree is #of times it was observed (with all permutations of tip labels within species) divided by the number of trees returned, all divided by the number of possible permutations (since this gene tree is just one realization of that), correcting for the number of intraspecific cherries (otherwise, for example, with a single species with a gene with two samples, (1,2) might be the gene tree, but we say the number of perms=2, and so though we find ((1|2),(1|2)) in all the ms returns, we would divide this by 2, when the real probability is one.
+					
+		//		}
+				msin.close();
+			}
+	/*		else {
+				neglnlikelihood=GSL_POSINF;
+			} */
+			
+		}
+		double score=neglnlikelihood;
+		if (COALaicmode==0) {
+			//do nothing, we're just using raw lnL
+		}
+		else if (COALaicmode==1) {
+			score=AIC(neglnlikelihood,numspecies);
+		}
+		else if (COALaicmode==2) {
+			score=AICc(neglnlikelihood,numspecies,trees->GetNumTrees());
+		}
+		else if (COALaicmode==3) {
+			score=AICc(neglnlikelihood,numspecies,taxa->GetNumTaxonLabels());
+		}
+		else if (COALaicmode==4) {
+			score=AICc(neglnlikelihood,numspecies,(trees->GetNumTrees())*(taxa->GetNumTaxonLabels()));
+		}
+		scorevector.push_back(neglnlikelihood);
+		scorevector.push_back(0);
+		scorevector.push_back(0);
+	}
 	else {
     //We do this so we don't bother doing the GTP or triplet calculations if they're not needed.
 		triplettoohigh=false;
@@ -2001,7 +2239,7 @@ void BROWNIE::DoExhaustiveSearch()
 		convertsamplestospecies.push_back(1);
 		cout<<" 1";
 	}
-	if (useCOAL) {
+	if (useCOAL || useMS) {
 		CurrentTree.InitializeMissingBranchLengths();
 	}
 	nextscorevector=GetCombinedScore(&CurrentTree);
@@ -2198,7 +2436,7 @@ void BROWNIE::DoHeuristicSearch()
     nxsstring scoretype;
 	message="Now starting the search proper.\nA \">\" before a score indicates that calculation of that score was aborted once the score for that move exceeded the best local score\n";
 	if (!jackknifesearch) {
-		if (!useCOAL) {
+		if (!useCOAL && !useMS) {
 			message+="\nRep\tMoves\t#Spp\tType\tQual\tCombScore\t      GTP\t   Struct\t    Local\t   Global\tNTrees\tRemaining";
 		}
 		else {
@@ -2395,7 +2633,7 @@ StartingTree.ConvertTaxonNamesToRandomTaxonNumbers();
 //cout<<"currentsppnum = "<<CurrentSppNum<<endl;
 //cout<<"starting tree health:\n";
 //StartingTree.ReportTreeHealth();
-if (useCOAL) {
+if (useCOAL || useMS) {
 		StartingTree.InitializeMissingBranchLengths();
 }
 
@@ -2814,7 +3052,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
         char outputstring[9];
         sprintf(outputstring,"%9.3f",bestscorelocal);
         message+=outputstring;
-		if (!useCOAL) {
+		if (!useCOAL && !useMS) {
 			message+="\t";
 			sprintf(outputstring,"%9.3f",bestscorelocalvector[1]);
 			message+=outputstring;
@@ -2978,7 +3216,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             }
             CurrentTree.SetBreakVector(NextTree.GetBreakVector()); //due to how the vectors are updated during a swap.
             CurrentTree.SetAttachVector(NextTree.GetAttachVector());
-			if (useCOAL) {
+			if (useCOAL || useMS) {
 				NextTree.InitializeMissingBranchLengths();
 			}
             nextscorevector=GetCombinedScore(&NextTree);
@@ -3006,7 +3244,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 }
                 cout<<"\n";
             }
-			if (useCOAL) {
+			if (useCOAL || useMS) {
 				NextTree.InitializeMissingBranchLengths();
 			}
             nextscorevector=GetCombinedScore(&NextTree);
@@ -3044,7 +3282,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 cout<<"Final tree = \n";
                 NextTree.Draw(cout);
             }
-			if (useCOAL) {
+			if (useCOAL || useMS) {
 				NextTree.InitializeMissingBranchLengths();
 			}
             //now try optimizing the new assignments (which descendant the samples go with) before actually getting the score
@@ -3167,7 +3405,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             //  cout<<"Bestscorefound = "<<bestscorefound<<endl;
             //convertsamplestospecies=Originalconvertsamplestospecies;
 			if(isinf(bestscoreforcombination)==0) {//so the best score is NOT infinity
-				if (useCOAL) {
+				if (useCOAL || useMS) {
 					NextTree.InitializeMissingBranchLengths();
 				}
 				nextscorevector=GetCombinedScore(&NextTree);
@@ -3212,7 +3450,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 cout<<"Next tree = \n";
                 NextTree.Draw(cout);
             }
-			if (useCOAL) {
+			if (useCOAL || useMS) {
 				NextTree.InitializeMissingBranchLengths();
 			}
             nextscorevector=GetCombinedScore(&NextTree);
@@ -3238,7 +3476,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
                 cout<<"Next tree = \n";
                 NextTree.Draw(cout);
             }
-			if (useCOAL) {
+			if (useCOAL || useMS) {
 				NextTree.InitializeMissingBranchLengths();
 			}
             nextscorevector=GetCombinedScore(&NextTree);
@@ -3251,7 +3489,21 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 			NextTree.FindAndSetRoot();
 			NextTree.Update();
 			NextTree.InitializeMissingBranchLengths();
-			NextTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
+			if (useCOAL) {
+				NextTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
+			}
+			else if (useMS) {
+				if (0.2>gsl_ran_flat (r,0,1)) {
+					NextTree.ModifyTotalBranchLength(brlensigma);
+				}
+				else {
+					NextTree.NodeSlideBranchLength(markedmultiplier);
+				}
+			}
+			else {
+				message+="Warning: attempting to do branch length estimation with a criterion that doesn't take it into account";
+				PrintMessage();
+			}
 			nextscorevector=GetCombinedScore(&NextTree);
             nextscore=nextscorevector[0];
 		}
@@ -3578,7 +3830,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             char outputstring[9];
             sprintf(outputstring,"%9.3f",nextscore);
             message+=outputstring;
-			if (!useCOAL) {
+			if (!useCOAL && !useMS) {
 				message+="\t";
 				if (gtptoohigh) {
 					message+=">";
@@ -10587,7 +10839,7 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
     FormattedNewBestTree.FindAndSetRoot();
     FormattedNewBestTree.Update();
     FormattedNewBestTree.GetNodeDepths();
-	if (useCOAL) {
+	if (useCOAL || useMS) {
 		FormattedNewBestTree.SetEdgeLengths(true);	
 	}
     NodeIterator <Node> n (FormattedNewBestTree.GetRoot());
@@ -10622,7 +10874,7 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
             }
         }
     }
-	if (useCOAL && exportalltrees) {
+	if ((useCOAL || useMS) && exportalltrees) {
 		newtree=true; //since brlen might be different
 	}
     if (newtree) {
@@ -10700,7 +10952,7 @@ void BROWNIE::FormatAndStoreBestTree(ContainingTree *NewBestTree,vector<double> 
 				jackknifetreestooutput+=ReturnFinalSpeciesTree(FormattedBestTrees[i]);
 				jackknifetreestooutput+="\n";
 			}
-            if (!useCOAL) {
+            if (!useCOAL && !useMS) {
 				outtreef<<"tree sptre"<<i+1<<" = [ "<<"Number of species: "<<numspecies<<"; Score: "<<TotalScores[i]<<" = "<<(1-structwt)<<" x GTP ("<<GTPScores[i]<<") + "<<structwt<<" x Struct ("<<StructScores[i]<<") ] [&R] ";
 			}
 			else {
@@ -11743,7 +11995,7 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
     {
         nxsstring output="";
         output+=(cur->GetLabel());
-		if (useCOAL)
+		if (useCOAL || useMS)
 		{
 			output+=":";
 			output+=cur->GetEdgeLength();
@@ -11880,7 +12132,7 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
         nxsstring output="";
         if (cur->GetLabel() != "")
             output+=cur->GetLabel();
-		if (useCOAL)
+		if (useCOAL || useMS)
 		{
 			output+=":";
 			output+=cur->GetEdgeLength();

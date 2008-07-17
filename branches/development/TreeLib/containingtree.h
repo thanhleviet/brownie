@@ -164,6 +164,10 @@ public:
 	virtual void InitializeMissingBranchLengths();
 
 	virtual void RandomlyModifySingleBranchLength(double markedmultiplier, double brlensigma);
+	
+	virtual void NodeSlideBranchLength(double markedmultiplier);
+	
+	virtual void ModifyTotalBranchLength(double brlensigma);
 };
 
 

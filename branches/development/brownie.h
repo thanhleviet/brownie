@@ -97,6 +97,8 @@ public:
     int randomstarts;
 	nxsstring treefilename;
 	bool useCOAL;
+	bool useMS;
+	int msbasereps;
 	int contourBrlenToExport;
 	int contourMaxRecursions;
 	double contourstartingnumbersteps;
