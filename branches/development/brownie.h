@@ -87,6 +87,7 @@ public:
     double structwt;
 	bool triplettoohigh;
 	bool gtptoohigh;
+	bool infinitescore;
 	double tripletdistthreshold;
     double pthreshold;
 	double chosensubsampling;

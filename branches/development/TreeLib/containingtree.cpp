@@ -1441,19 +1441,25 @@ void ContainingTree::InitializeMissingBranchLengths()
 	}
 	
 	else { //we have to be more clever
-		NodeIterator <Node> n (GetRoot());
+		PreorderIterator <Node> n (GetRoot());
 		NodePtr currentnode = n.begin();
 		while (currentnode)
 		{
-			if ((currentnode->GetEdgeLength())==0) {
+			if (currentnode==GetRoot()) {
+				currentnode->SetEdgeLength(0);
+				getPathLengths(currentnode);
+			}
+			else if (((currentnode->GetEdgeLength())==0)) {
 				float pathlength = currentnode->GetPathLength();
 				if (currentnode->IsLeaf()) { //is a leaf; we've done its ancestors
 					currentnode->SetEdgeLength(maxpathlength-pathlength);
 					currentnode->SetMarked(true);
+					getPathLengths(currentnode);
 				}
 				else {
 					currentnode->SetEdgeLength(0.5*(maxpathlength-pathlength));
 					currentnode->SetMarked(true);
+					getPathLengths(currentnode);
 				}
 			}
 			currentnode = n.next();
@@ -1524,56 +1530,61 @@ void ContainingTree::NodeSlideBranchLength(double markedmultiplier)
 	Update();
 	GetNodeDepths();	
 	SetEdgeLengths(true);
-	//cout<<"RandomlyModifySingleBranchLength"<<endl;
-	//ReportTreeHealth();
-	int numberofunmarkednodes=GetNumLeaves()-2; //number of internal nodes
-	int numberofmarkednodes=0;
-	NodeIterator <Node> n (GetRoot());
-	NodePtr currentnode = n.begin();
-	//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
-	while (currentnode)
-	{
-		if (currentnode->IsMarked()) {
-			if (!(currentnode->IsLeaf()) && currentnode!=GetRoot()) {
-				numberofunmarkednodes--;
-				numberofmarkednodes++;
-			}
-		}
-		currentnode = n.next();
-	}
-	double probabilityperunmarked=1.0/(numberofunmarkednodes+markedmultiplier*numberofmarkednodes);
-	bool changedbrlen=false;
-	while (!changedbrlen) {
-		currentnode = n.begin();
+	if (GetNumLeaves()>2) { //so there are internal nodes to move
+		//cout<<"RandomlyModifySingleBranchLength"<<endl;
+		//ReportTreeHealth();
+		int numberofunmarkednodes=GetNumLeaves()-2; //number of internal nodes
+		int numberofmarkednodes=0;
+		NodeIterator <Node> n (GetRoot());
+		NodePtr currentnode = n.begin();
+		//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
 		while (currentnode)
 		{
-			if (!(currentnode->IsLeaf()) && currentnode!=GetRoot()) {
-				double thresholdprobability=probabilityperunmarked;
-				if (currentnode->IsMarked()) {
-					thresholdprobability*=markedmultiplier;
-				}
-				double testvalue=gsl_ran_flat (r,0,1);
-				//cout<<"Testvalue = "<<testvalue<<" thresholdprobability = "<<thresholdprobability<<endl;
-				if (testvalue<thresholdprobability) { //adjust brlen
-					double belowedgelength=currentnode->GetEdgeLength();
-					double aboveedgelength=(currentnode->GetSibling())->GetEdgeLength();
-					double movedistance=gsl_ran_flat(r,-0.5*(GSL_MIN(belowedgelength,aboveedgelength)),0.5*(GSL_MIN(belowedgelength,aboveedgelength)));
-					currentnode->SetEdgeLength(belowedgelength-movedistance);
-					NodePtr nextnode=currentnode->GetChild();
-					while (nextnode!=NULL) {
-						nextnode->SetEdgeLength(aboveedgelength+movedistance);
-						nextnode->GetSibling(); //so, doesn't assume binary tree
-					}
-					changedbrlen=true;
-					//cout<<"Should break here"<<endl;
-					break;
+			if (currentnode->IsMarked()) {
+				if (!(currentnode->IsLeaf()) && currentnode!=GetRoot()) {
+					numberofunmarkednodes--;
+					numberofmarkednodes++;
 				}
 			}
 			currentnode = n.next();
 		}
-		
+		double probabilityperunmarked=1.0/(numberofunmarkednodes+markedmultiplier*numberofmarkednodes);
+		bool changedbrlen=false;
+		while (!changedbrlen) {
+			currentnode = n.begin();
+			while (currentnode)
+			{
+				if (!(currentnode->IsLeaf()) && currentnode!=GetRoot()) {
+					double thresholdprobability=probabilityperunmarked;
+					if (currentnode->IsMarked()) {
+						thresholdprobability*=markedmultiplier;
+					}
+					double testvalue=gsl_ran_flat (r,0,1);
+					//cout<<"Testvalue = "<<testvalue<<" thresholdprobability = "<<thresholdprobability<<endl;
+					if (testvalue<thresholdprobability) { //adjust brlen
+						double belowedgelength=currentnode->GetEdgeLength();
+						double aboveedgelength=(currentnode->GetSibling())->GetEdgeLength();
+						double movedistance=gsl_ran_flat(r,-0.5*(GSL_MIN(belowedgelength,aboveedgelength)),0.5*(GSL_MIN(belowedgelength,aboveedgelength)));
+						currentnode->SetEdgeLength(belowedgelength-movedistance);
+						NodePtr nextnode=currentnode->GetChild();
+						while (nextnode!=NULL) {
+							nextnode->SetEdgeLength(aboveedgelength+movedistance);
+							nextnode->GetSibling(); //so, doesn't assume binary tree
+						}
+						changedbrlen=true;
+						//cout<<"Should break here"<<endl;
+						break;
+					}
+				}
+				currentnode = n.next();
+			}
+			
+		}
 	}
 	//cout<<"Done adjusting"<<endl;
+	else {
+		cout<<"Warning: attempting a move where there are no internal nodes (besides the root)"<<endl;
+	}
 }
 
 void ContainingTree::ModifyTotalBranchLength(double brlensigma)

@@ -313,6 +313,7 @@ void BROWNIE::FactoryDefaults()
     structwt=0.5;
 	triplettoohigh=false;
 	gtptoohigh=false;
+	infinitescore=false;
 	tripletdistthreshold=0.2; //Sets how often to use NJ tree distances for starting assignments (higher number=more often) and how often to use triplet support
     pthreshold=1;
 	chosensubsampling=2.0;
@@ -1307,14 +1308,6 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 				useMS=false;
 				message="This will use COAL for the search";
 				PrintMessage();
-				if (movefreqvector[5]==0) {
-					for (int i=0; i<5; i++) {
-						movefreqvector[i]=movefreqvector[i]*0.8;
-					}
-					movefreqvector[5]=0.2;
-					message="Now allocating 20% of moves to branch length changes";
-					PrintMessage();
-				}
 				
             }
         }
@@ -1328,6 +1321,16 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 				useCOAL=false;
 				message="This will use ms for the search";
 				PrintMessage();
+				if (movefreqvector[5]==0) {
+					movefreqvector[0]=0.1;
+					movefreqvector[1]=0.1;
+					movefreqvector[2]=0.1;
+					movefreqvector[3]=0.1;
+					movefreqvector[4]=0.1;
+					movefreqvector[5]=0.5;
+					message="Now allocating 50% of moves to branch length changes";
+					PrintMessage();
+				}
 				
             }
         }
@@ -1556,6 +1559,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 {
 	vector<double> scorevector;
 	bool calculatescore=true;
+	bool infinitescore=false;
 	if (useCOAL) {
 		int maxspecies=0;
 		int currentnumberofspecies=0;
@@ -1910,12 +1914,16 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 				cur = n.next();
 			}
 			nxsstring finalsystemcall=msstring;
+			//cout<<msstring<<endl;
 			finalsystemcall+=grepstring;
 			nxsstring msinputfile="mscount.txt";
 			finalsystemcall+=" > ";
 			finalsystemcall+=msinputfile;
+			system("rm mscount.txt");
+			int returncode=system(finalsystemcall.c_str());
+
 			//cout<<finalsystemcall<<endl;
-			int returnattempts=-1;
+		/*	int returnattempts=-1;
 			int returncode=-1;
 			while (returncode!=0) {
 				if (returnattempts>0) {
@@ -1937,22 +1945,25 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 					PrintMessage();
 				}
 				
-			}
-		//	if (returncode==0) {
-				ifstream msin;
-				msin.open( msinputfile.c_str(), ios::binary | ios::in );
-				if (msin) {
-					char inputitem [COMMAND_MAXLEN];
-					msin>>inputitem;
-					double numbermatches=atof(inputitem);
-					neglnlikelihood+=-1.0*(log(GSL_MAX(numbermatches,0.01))-log(msbasereps)-log((1.0*numberofpermutations)/(1.0*numberintraspecificcherries))); //numbermatches is an integer, but log(0) is infinite. Idea is to make this a really big but not infinite number. Probability of a gene tree is #of times it was observed (with all permutations of tip labels within species) divided by the number of trees returned, all divided by the number of possible permutations (since this gene tree is just one realization of that), correcting for the number of intraspecific cherries (otherwise, for example, with a single species with a gene with two samples, (1,2) might be the gene tree, but we say the number of perms=2, and so though we find ((1|2),(1|2)) in all the ms returns, we would divide this by 2, when the real probability is one.
-					
-		//		}
+			}*/
+			//	if (returncode==0) {
+			ifstream msin;
+			msin.open( msinputfile.c_str(), ios::binary | ios::in );
+			if (msin) {
+				char inputitem [COMMAND_MAXLEN];
+				msin>>inputitem;
+				double numbermatches=atof(inputitem);
+				if (numbermatches==0) {
+					infinitescore=true;
+				}
+				neglnlikelihood+=-1.0*(log(GSL_MAX(numbermatches,0.01))-log(msbasereps)-log((1.0*numberofpermutations)/(1.0*numberintraspecificcherries))); //numbermatches is an integer, but log(0) is infinite. Idea is to make this a really big but not infinite number. Probability of a gene tree is #of times it was observed (with all permutations of tip labels within species) divided by the number of trees returned, all divided by the number of possible permutations (since this gene tree is just one realization of that), correcting for the number of intraspecific cherries (otherwise, for example, with a single species with a gene with two samples, (1,2) might be the gene tree, but we say the number of perms=2, and so though we find ((1|2),(1|2)) in all the ms returns, we would divide this by 2, when the real probability is one.
+				
+				//		}
 				msin.close();
 			}
-	/*		else {
+			else {
 				neglnlikelihood=GSL_POSINF;
-			} */
+			}
 			
 		}
 		double score=neglnlikelihood;
@@ -2357,6 +2368,7 @@ double BROWNIE::DoAllAssignments(double bestscore, int maxspecies, ContainingTre
 
 void BROWNIE::DoHeuristicSearch()
 {
+	int chosenmove=0;
 	if (jackknifesearch) {
 			message="\n---------- Now starting jackknife search replicate ";
 		message+=jackrep;
@@ -2425,9 +2437,24 @@ void BROWNIE::DoHeuristicSearch()
 		NJBrlenTree.Write(logf);
 		logf<<endl<<"end;"<<endl;
 	}
-    //This is just a rudimentary search: later, add options like time limits, changing the number of species, etc.
+	
+	message="Proportion & type of moves:\n\t";
+	message+=movefreqvector[0];
+	message+="\tSubtree pruning and regrafting\n\t";
+	message+=movefreqvector[1];
+	message+="\tMove samples from one species to another\n\t";
+	message+=movefreqvector[2];
+	message+="\tIncrease the number of species\n\t";
+	message+=movefreqvector[3];
+	message+="\tDecrease the number of species\n\t";
+	message+=movefreqvector[4];
+	message+="\tReroot the species tree\n\t";
+	message+=movefreqvector[5];
+	message+="\tChange species tree branch lengths\n";
+	PrintMessage();
+
+	
     bestscore=GSL_POSINF;
-    //ADD STORAGE OF STARTING VALUE
     vector<int> intialconvertsamplestospeciesvector=convertsamplestospecies;
     double nextscore;
     double nextgtpscore;
@@ -2873,14 +2900,22 @@ if (status) {
 //    BestTrees.push_back(CurrentTree);
 // }
 bool improvement=true;
+		bool moreswaps=true;
+		bool morereassignments=true;
+		bool moreincreases=true;
+		bool moredecreases=true;
+		bool morererootings=true;
+		
 while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
     //cout<<"\nimprovement, restarting\n";
     improvement=false;
-    bool moreswaps=true;
-    bool morereassignments=true;
-    bool moreincreases=true;
-    bool moredecreases=true;
-    bool morererootings=true;
+	if (chosenmove!=6) { //only reset moves on topology change
+		bool moreswaps=true;
+		bool morereassignments=true;
+		bool moreincreases=true;
+		bool moredecreases=true;
+		bool morererootings=true;
+	}
     // cout<<"moreswaps = "<<moreswaps<<" morereassignments = "<<morereassignments<<" moreincreases = "<<moreincreases<<" moredecreases = "<<moredecreases<<" morererootings = "<<morererootings<<endl;
     assert(BestTreesThisRep.size()>0);
     //for(int i=0;i<BestTreesThisRep.size();i++) {
@@ -3136,7 +3171,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             morererootings=false;
         }
         double randomvalue=double(gsl_ran_flat (r,0,1));
-        int chosenmove=0;
+        chosenmove=0;
         nxsstring chosenmovestring="?";
         vector<double> possiblemovefreqvector;
         vector<int> possiblemovechoicevector;
@@ -3493,7 +3528,7 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
 				NextTree.RandomlyModifySingleBranchLength(markedmultiplier,brlensigma);
 			}
 			else if (useMS) {
-				if (0.2>gsl_ran_flat (r,0,1)) {
+				if (0.2>gsl_ran_flat (r,0,1) || NextTree.GetNumLeaves()<3) {
 					NextTree.ModifyTotalBranchLength(brlensigma);
 				}
 				else {
@@ -3824,9 +3859,12 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
             message+=chosenmovestring;
             message+="\t";
             message+=scoretype;
-			if (gtptoohigh || triplettoohigh) {
+			if (gtptoohigh || triplettoohigh ) {
 				message+=">";
 			}			
+			if (infinitescore) {
+				message+="~";
+			}
             char outputstring[9];
             sprintf(outputstring,"%9.3f",nextscore);
             message+=outputstring;
