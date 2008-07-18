@@ -1835,24 +1835,26 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 			else {
 				//assumes binary, ultrametric tree
 				if (cur->GetChild()!=NULL) { //will only really occur if the tree has just a root node
-					int childid=atoi(((cur->GetChild())->GetLabel()).c_str());
-					int sibid=atoi((((cur->GetChild())->GetSibling())->GetLabel()).c_str());
-					nxsstring newlabel="";
-					newlabel+=GSL_MIN(childid,sibid);
-					cur->SetLabel(newlabel);
-					double splittime=0;
-					NodePtr childnode=cur->GetChild();
-					while (childnode!=NULL) {
-						splittime+=childnode->GetEdgeLength();
-						childnode=childnode->GetChild();
+					if ((cur->GetChild())->GetSibling()!=NULL) {
+						int childid=atoi(((cur->GetChild())->GetLabel()).c_str());
+						int sibid=atoi((((cur->GetChild())->GetSibling())->GetLabel()).c_str());
+						nxsstring newlabel="";
+						newlabel+=GSL_MIN(childid,sibid);
+						cur->SetLabel(newlabel);
+						double splittime=0;
+						NodePtr childnode=cur->GetChild();
+						while (childnode!=NULL) {
+							splittime+=childnode->GetEdgeLength();
+							childnode=childnode->GetChild();
+						}
+						msstring+="-ej ";
+						msstring+=splittime;
+						msstring+=" ";
+						msstring+=GSL_MAX(childid,sibid);
+						msstring+=" ";
+						msstring+=GSL_MIN(childid,sibid);
+						msstring+=" ";
 					}
-					msstring+="-ej ";
-					msstring+=splittime;
-					msstring+=" ";
-					msstring+=GSL_MAX(childid,sibid);
-					msstring+=" ";
-					msstring+=GSL_MIN(childid,sibid);
-					msstring+=" ";
 				}
 			}
 			cur = n.next();
