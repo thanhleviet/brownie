@@ -1921,7 +1921,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 			nxsstring msinputfile="mscount.txt";
 			finalsystemcall+=" > ";
 			finalsystemcall+=msinputfile;
-			system("rm mscount.txt");
+			//system("rm mscount.txt");
 			int returncode=system(finalsystemcall.c_str());
 
 			//cout<<finalsystemcall<<endl;
@@ -1964,6 +1964,14 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 				msin.close();
 			}
 			else {
+				message="\nWarning: got return code of ";
+				message+=returncode;
+				message+=" for ms string of \n\n\t";
+				message+=msstring;
+				message+="\n\nand grep string of \n\n";
+				message+=grepstring;
+				message+="\n\n";
+			
 				neglnlikelihood=GSL_POSINF;
 			}
 			
