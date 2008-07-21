@@ -4012,6 +4012,28 @@ gsl_matrix_free(TaxonDistance);
 gsl_matrix_free(TaxonProportDistance);
 }
 
+void BROWNIE::HandleDettmanCollapse( NexusToken& token )
+{
+    for(;;)
+    {
+        token.GetNextToken();
+		
+        if( token.Equals(";") ) {
+            DoDettmanCollapse();
+            break;
+        }
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading Dettman command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+    message="Now doing Dettman collapse\n";
+    PrintMessage();
+}
+
+
 
 void BROWNIE::DoDettmanCollapse()
 {
@@ -11416,7 +11438,7 @@ void BROWNIE::Read( NexusToken& token )
             HandleHeuristicSearch( token );
         }
 		else if( token.Abbreviation("DETTman") ) {
-            DoDettmanCollapse( );
+            HandleDettmanCollapse( token );
         }
 		else if( token.Abbreviation("JAckknife") ) {
 			jackknifesearch=true;

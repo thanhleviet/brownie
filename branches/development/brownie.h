@@ -233,6 +233,7 @@ public:
     void NumOpt( NexusToken& token);
 	void DoExhaustiveSearch();
     void DoHeuristicSearch();
+	void HandleDettmanCollapse( NexusToken& token );
 	void DoDettmanCollapse();
     void HandleHeuristicSearch( NexusToken& token );
     void HandleShowtree( NexusToken& token );
