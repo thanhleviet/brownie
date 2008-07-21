@@ -3560,13 +3560,13 @@ while (improvement && (rearrlimit<0 || movecount<rearrlimit)) {
         }
         if (somethinghappened) {
 			//cout<<"Something happened"<<endl;
-            if (NextTree.GetNumLeaves()==NextTree.GetNumInternals()) {
+/*            if (NextTree.GetNumLeaves()==NextTree.GetNumInternals()) {
                 errormsg="Error: num leaves = num internals\nLast move chosen was";
                 errormsg+=chosenmove;
                 NextTree.ReportTreeHealth();
                 throw XNexus( errormsg);
 				
-            }
+            }*/
             assert(CheckConvertSamplesToSpeciesVector(false));
 
             scoretype="\t";
