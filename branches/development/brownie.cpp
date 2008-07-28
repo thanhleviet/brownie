@@ -5342,13 +5342,24 @@ void BROWNIE::ComputeAccuracy() {
 	ContainingTree TrueTree;
 	TrueTree.SetRoot(TrueTreeGeneTreeFmt.CopyOfSubtree(TrueTreeGeneTreeFmt.GetRoot()));
 	//message="TreeNum\tTreeName\tNumTripletsProperlyResolved\tNumTripletsProperlyUnresolved\tNumTripletsImproperlyResolved\tNumTripletsImproperlyUnresolved";
-	message="\t\tCorrect\t\tIncorrect\nNum\tName\tRes\tUn\tRes\tUn";
+	message="\t\tCorrect\t\tIncorrect\tNumber\nNum\tName\tRes\tUn\tRes\tUn\tSpecies";
 	PrintMessage();
 	for (int selectedtree=1;selectedtree<trees->GetNumTrees();selectedtree++) {
 		ContainingTree ModifiedTrueTree=TrueTree;
 		Tree CurrentGeneTreeTreeFmt=intrees.GetIthTree(selectedtree);
 		ContainingTree CurrentGeneTree;
 		CurrentGeneTree.SetRoot(CurrentGeneTreeTreeFmt.CopyOfSubtree(CurrentGeneTreeTreeFmt.GetRoot()));
+		NodeIterator <Node> n (CurrentGeneTree.GetRoot());
+        NodePtr currentnode = n.begin();
+        int speciescount=0;
+        while (currentnode)
+        {
+            if (currentnode!=IsLeaf) {
+                speciescount++; //includes Root
+            }
+            currentnode = n.next();
+        }
+		
 		int ntaxincommon=PrepareTreesForTriplet(&ModifiedTrueTree,&CurrentGeneTree);
 		vector<int> tripletoverlapoutput=GetTripletOverlap(&ModifiedTrueTree,&CurrentGeneTree,ntaxincommon);
 		message="";
@@ -5379,6 +5390,8 @@ void BROWNIE::ComputeAccuracy() {
 		message+="\t";
 		//message+=double(tripletoverlapoutput[5]/tripletoverlapoutput[0]);
 		message+=numunresolvedinTOtheronly/maxnumber;
+		message+="\t";
+		message+=speciescount;
 		PrintMessage();
 	}
 }
