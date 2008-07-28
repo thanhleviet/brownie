@@ -5354,7 +5354,7 @@ void BROWNIE::ComputeAccuracy() {
         int speciescount=0;
         while (currentnode)
         {
-            if (currentnode!=IsLeaf) {
+            if (!(currentnode->IsLeaf())) {
                 speciescount++; //includes Root
             }
             currentnode = n.next();
