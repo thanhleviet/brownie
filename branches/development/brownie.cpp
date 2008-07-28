@@ -5351,7 +5351,7 @@ void BROWNIE::ComputeAccuracy() {
 		CurrentGeneTree.SetRoot(CurrentGeneTreeTreeFmt.CopyOfSubtree(CurrentGeneTreeTreeFmt.GetRoot()));
 		NodeIterator <Node> n (CurrentGeneTree.GetRoot());
         NodePtr currentnode = n.begin();
-        int speciescount=0;
+        int speciescount=-1;
         while (currentnode)
         {
             if (!(currentnode->IsLeaf())) {
@@ -5391,7 +5391,7 @@ void BROWNIE::ComputeAccuracy() {
 		//message+=double(tripletoverlapoutput[5]/tripletoverlapoutput[0]);
 		message+=numunresolvedinTOtheronly/maxnumber;
 		message+="\t";
-		message+=speciescount;
+		message+=GSL_MAX(1,speciescount); //If there's one species, there will only be the root node
 		PrintMessage();
 	}
 }
