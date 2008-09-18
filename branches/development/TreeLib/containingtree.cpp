@@ -977,7 +977,17 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
         if (AncestralNode->GetChild()==SelectedNode) { //Selected Node is a child
             AncestralNode->SetChild(DescendantNode);
             DescendantNode->SetAnc(AncestralNode);
-			if ((SelectedNode->GetSibling())!=NULL) {
+			NodePtr SibNode=DescendantNode->GetSibling();
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				if((SibNode->GetSibling())==NULL) {
+					SibNode->SetSibling(SelectedNode->GetSibling());
+					break;
+				}
+				SibNode=SibNode->GetSibling();
+			}
+			
+/*			if ((SelectedNode->GetSibling())!=NULL) {
 				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
 				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
 				DescendantNode->SetSibling(SelectedNode->GetSibling());
@@ -986,7 +996,7 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
 			while (SibNode!=NULL) {
 				SibNode->SetAnc(AncestralNode);
 				SibNode=SibNode->GetSibling();
-			}
+			} */
             SelectedNode->SetSibling(NULL);
             SelectedNode->SetAnc(NULL);
         }
@@ -996,8 +1006,19 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
                 LinkingNode=LinkingNode->GetSibling();
 			}
             LinkingNode->SetSibling(DescendantNode); //So, move the sibiling link over one (even if it's null)
+			
             DescendantNode->SetAnc(AncestralNode);
-			if ((SelectedNode->GetSibling())!=NULL) {
+			NodePtr SibNode=DescendantNode->GetSibling();
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				if((SibNode->GetSibling())==NULL) {
+					SibNode->SetSibling(SelectedNode->GetSibling());
+					break;
+				}
+				SibNode=SibNode->GetSibling();
+			}
+			
+		/*	if ((SelectedNode->GetSibling())!=NULL) {
 				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
 				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
 				DescendantNode->SetSibling(SelectedNode->GetSibling());
@@ -1006,9 +1027,10 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
 			while (SibNode!=NULL) {
 				SibNode->SetAnc(AncestralNode);
 				SibNode=SibNode->GetSibling();
-			}
+			} */
             SelectedNode->SetSibling(NULL);
             SelectedNode->SetAnc(NULL);
+			SelectedNode->SetChild(NULL);
         }
         delete SelectedNode;
         FindAndSetRoot();
