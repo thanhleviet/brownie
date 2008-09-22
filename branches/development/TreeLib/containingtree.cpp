@@ -978,6 +978,9 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
             AncestralNode->SetChild(DescendantNode);
             DescendantNode->SetAnc(AncestralNode);
 			NodePtr SibNode=DescendantNode->GetSibling();
+			if (SibNode==NULL) { //covers case where we're suppressing a node with one descendant, so the descendant has no sibs
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}
 			while (SibNode!=NULL) {
 				SibNode->SetAnc(AncestralNode);
 				if((SibNode->GetSibling())==NULL) {
@@ -986,7 +989,6 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
 				}
 				SibNode=SibNode->GetSibling();
 			}
-			
 /*			if ((SelectedNode->GetSibling())!=NULL) {
 				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
 				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
@@ -1009,6 +1011,9 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
 			
             DescendantNode->SetAnc(AncestralNode);
 			NodePtr SibNode=DescendantNode->GetSibling();
+			if (SibNode==NULL) { //covers case where we're suppressing a node with one descendant, so the descendant has no sibs
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}			
 			while (SibNode!=NULL) {
 				SibNode->SetAnc(AncestralNode);
 				if((SibNode->GetSibling())==NULL) {
