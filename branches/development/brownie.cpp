@@ -1926,7 +1926,7 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 			//system("rm mscount.txt");
 			int returncode=system(finalsystemcall.c_str());
 			if (debugmode) {
-				cout<<"return code is "<<returncode<<endl;
+				cout<<"return code is "<<returncode<<" (divided by 256, is "<<returncode/256<<")"<<endl;
 			}
 			//cout<<finalsystemcall<<endl;
 		/*	int returnattempts=-1;
