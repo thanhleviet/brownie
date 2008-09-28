@@ -1925,7 +1925,9 @@ vector<double> BROWNIE::GetCombinedScore(ContainingTree *SpeciesTreePtr)
 			finalsystemcall+=msinputfile;
 			//system("rm mscount.txt");
 			int returncode=system(finalsystemcall.c_str());
-
+			if (debugmode) {
+				cout<<"return code is "<<returncode<<endl;
+			}
 			//cout<<finalsystemcall<<endl;
 		/*	int returnattempts=-1;
 			int returncode=-1;
