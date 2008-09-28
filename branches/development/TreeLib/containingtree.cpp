@@ -1592,7 +1592,14 @@ void ContainingTree::NodeSlideBranchLength(double markedmultiplier)
 					//cout<<"Testvalue = "<<testvalue<<" thresholdprobability = "<<thresholdprobability<<endl;
 					if (testvalue<thresholdprobability) { //adjust brlen
 						double belowedgelength=currentnode->GetEdgeLength();
-						double aboveedgelength=(currentnode->GetSibling())->GetEdgeLength();
+						
+						double aboveedgelength=0.9*belowedgelength;
+						if ((currentnode->GetSibling())!=NULL) { //has sibling
+							aboveedgelength=(currentnode->GetSibling())->GetEdgeLength();
+						}
+						else { //is the rightmost sibling, so get its left sib
+							aboveedgelength=((currentnode->GetAnc())->GetChild())->GetEdgeLength();
+						}
 						double movedistance=gsl_ran_flat(r,-0.5*(GSL_MIN(belowedgelength,aboveedgelength)),0.5*(GSL_MIN(belowedgelength,aboveedgelength)));
 						currentnode->SetEdgeLength(belowedgelength-movedistance);
 						NodePtr nextnode=currentnode->GetChild();
