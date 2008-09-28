@@ -1605,7 +1605,7 @@ void ContainingTree::NodeSlideBranchLength(double markedmultiplier)
 						NodePtr nextnode=currentnode->GetChild();
 						while (nextnode!=NULL) {
 							nextnode->SetEdgeLength(aboveedgelength+movedistance);
-							nextnode->GetSibling(); //so, doesn't assume binary tree
+							nextnode=nextnode->GetSibling(); //so, doesn't assume binary tree
 						}
 						changedbrlen=true;
 						//cout<<"Should break here"<<endl;
