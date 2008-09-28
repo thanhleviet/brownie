@@ -1417,6 +1417,7 @@ void ContainingTree::InitializeMissingBranchLengths()
 	Update();
 	GetNodeDepths();
 	//cout<<"InitializeMissingBranchLengths"<<endl;
+	//ReportTreeHealth();
 	SetEdgeLengths(true);
 	MarkNodes(false); //We'll mark the nodes below which the branch lengths have been changed
 	getPathLengths(Root); //make sure we store the path lengths
@@ -1429,6 +1430,7 @@ void ContainingTree::InitializeMissingBranchLengths()
 		{
 			if (currentnode!=Root) {
 				currentnode->SetEdgeLength(1.0*currentnode->GetDepth() - 1.0*(currentnode->GetAnc())->GetDepth());
+				//cout<<endl<<currentnode<<" "<<currentnode->GetEdgeLength();
 			}
 			/*			if (((currentnode->GetEdgeLength())==0) || ((currentnode->GetEdgeLength())!=(currentnode->GetEdgeLength())) || gsl_isnan(currentnode->GetEdgeLength()) || gsl_isinf(currentnode->GetEdgeLength())) { //test for ==0 or ==nan
 			 double totalbrlen=0;
@@ -1462,9 +1464,9 @@ void ContainingTree::InitializeMissingBranchLengths()
 			 newlength=totalbrlen/countofbranches; //assume missing brlen similar to that of neighbors
 			 }
 			 currentnode->SetEdgeLength(newlength); */
-			
+			currentnode = n.next();
 		}
-		currentnode = n.next();
+		
 	}
 	
 	else { //we have to be more clever
