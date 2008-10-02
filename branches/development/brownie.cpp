@@ -33,6 +33,7 @@
 #include "treewriter.h"
 #include <time.h>
 #include <map>
+#include <limits>
 #include "brownie.h"
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_rng.h>
@@ -64,6 +65,7 @@
 #include "cdfvectorholder.h"
 #include <sstream>
 #include <iostream>
+#include "superdouble.h"
 
 //took out this section since GTP is built in
 //extern "C" {
@@ -15131,7 +15133,8 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 			gsl_vector_set(localvariables,i,exp(gsl_vector_get(localvariables,i)));
 		}
 	}
-	double likelihood=GSL_POSINF;
+	//double likelihood=GSL_POSINF;
+	double likelihood=DBL_MAX; //rather than an infinte value, use the maximum possible value, so numerical optimization doesn't fail
 	negbounceparam=-1;
 	if (numberoffreeparameters>0) { //if the input vector has useful variables; this number is only zero in the case of some user models
 		if (gsl_vector_min(localvariables)<0) { //means we have a negative rate or state frequency if <0, so leave the likelihood set at a really bad number
@@ -15142,6 +15145,9 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 					cout<<gsl_vector_get(localvariables,i)<<" ";
 				}
 				cout<<")"<<endl;
+			}
+			if (debugmode) {
+				cout<<"GetDiscreteCharLnL output (first return) is "<<likelihood<<endl;
 			}
 			return likelihood;
 		}
@@ -15235,7 +15241,17 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 			for (int i=0; i<localnumbercharstates; i++) { //do ancestralstatevector for freqs
 				if (discretechosenstatefreqmodel==1) {
 					//Uniform
-					gsl_vector_set(ancestralstatevector,i,1.0/localnumbercharstates);
+					//gsl_vector_set(ancestralstatevector,i,1.0/localnumbercharstates);
+					if (i<(localnumbercharstates-1)) {
+						gsl_vector_set(ancestralstatevector,i,1.0/localnumbercharstates);
+					}
+					else { //last number must be 1-sum(other states)
+						double frequencysum=0.0;
+						for (int j=0; j<i;j++) {
+							frequencysum+=gsl_vector_get(ancestralstatevector,j);
+						}
+						gsl_vector_set(ancestralstatevector,i,1.0-frequencysum);
+					}
 				}
 				else if (discretechosenstatefreqmodel==2) {
 					double frequency=0.0;
@@ -15295,7 +15311,8 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 		for (int i=0; i<ancestralstatevector->size;i++) {
 			frequencysum+=gsl_vector_get(ancestralstatevector,i);
 		}
-		if ((fabs(frequencysum-1.0)>DBL_EPSILON) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
+//		if ((fabs(frequencysum-1.0)>DBL_EPSILON) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
+		if ((gsl_fcmp(frequencysum,1.0,DBL_EPSILON/10.0)==0) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
 			if(detailedoutput) {
 				cout<<"\n\tHad wrong state frequency input, ancestralstatevector vector is ( ";
 				for (int i=0;i<ancestralstatevector->size;i++) {
@@ -15303,18 +15320,22 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 				}
 				cout<<") ";
 				if (frequencysum!=1.0) {
-					cout<<"[SUM NOT 1] ";
+					cout<<"[SUM ("<<frequencysum<<") NOT 1: Sum-1 = "<<fabs(frequencysum-1.0)<<"] ";
 				}
 				if (gsl_vector_min(ancestralstatevector)<0) {
-					cout<<"[MIN < 0] ";
+					cout<<"[MIN ("<<gsl_vector_min(ancestralstatevector)<<") < 0] ";
 				}
 				if (gsl_vector_max(ancestralstatevector)>1 ) {
-					cout<<"[MAX > 1] ";
+					cout<<"[MAX ("<<gsl_vector_max(ancestralstatevector)<<") > 1] ";
 				}
 				cout<<endl;
 			}
-			likelihood=GSL_POSINF;
-			
+			//likelihood=GSL_POSINF;
+			likelihood=DBL_MAX; //rather than an infinte value, use the maximum possible value, so numerical optimization doesn't fail
+
+			if (debugmode) {
+				cout<<"GetDiscreteCharLnL output (second return) is "<<likelihood<<endl;
+			}
 			return likelihood;	
 		}
 		
@@ -15328,6 +15349,9 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 		gsl_vector_free(ancestralstatevector);
 		gsl_vector_free(localvariables);
 		//cout<<"\neeeeeeeeeeeeeeeeeeeeeeeeeee"<<endl;
+		if (debugmode) {
+			cout<<"GetDiscreteCharLnL output (third return) is "<<likelihood<<endl;
+		}
 		return likelihood;
 	//}
 }
@@ -16393,7 +16417,7 @@ NodePtr BROWNIE::EstimateMLDiscreteCharJointAncestralStates(gsl_matrix * RateMat
 	return (*Tptr).GetRoot();	
 }
 
-
+/*  ORIGINAL FUNCTION FOR CALCULATING THE LIKELIHOOD: HAS ISSUES WITH REALLY TINY LIKELIHOODS, AS IT DOESN'T USE LOGS ON THE DOWNPASS
 //Calculates the likelihood of discrete character discretechosenchar on tree chosentree
 double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector)
 {
@@ -16411,8 +16435,8 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 	int olddiscretechosenchar=discretechosenchar;
 	for (discretechosenchar=startingdiscretechosenchar;discretechosenchar<endingdiscretechosenchar;discretechosenchar++) {
 		if ((discretecharacters->GetObsNumStates(discretechosenchar))>1 || variablecharonly==false) { //so, ignore invariant characters if variablecharonly==true
-			double L=0;
-			map<Node*, vector<double> > stateprobatnodes;
+			long double L=0;
+			map<Node*, vector<long double> > stateprobatnodes;
 			Tree T=intrees.GetIthTree(chosentree-1);
 			NodeIterator <Node> n (T.GetRoot()); //Goes from tips down
 			NodePtr currentnode = n.begin();
@@ -16421,7 +16445,7 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 				if (currentnode->IsLeaf() ) {
 					int statenumber=discretecharacters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),discretechosenchar); //NOTE: for discrete chars, the number starts at 0
 					for(int j=0;j<ancestralstatevector->size;j++) {
-						double probofstatej=0; //do all in straight prob, then convert to ln L
+						long double probofstatej=0; //do all in straight prob, then convert to ln L
 						if (j==statenumber) {
 							probofstatej=1; 
 						}
@@ -16431,10 +16455,10 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 				else { //must be an internal node, including the root
 					for(int i=0;i<ancestralstatevector->size;i++) { //do this for each possible state at the current node
 						NodePtr descnode=currentnode->GetChild();
-						double probofstatei=1;
+						long double probofstatei=1;
 						while (descnode!=NULL) { 
 							gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,descnode->GetEdgeLength());
-							double probofthissubtree=0;
+							long double probofthissubtree=0;
 							for(int j=0;j<ancestralstatevector->size;j++) {
 								probofthissubtree+=(gsl_matrix_get(Pmatrix,i,j))*((stateprobatnodes[descnode])[j]); //Prob of going from i to j on desc branch times the prob of the subtree with root state j
 							}
@@ -16443,6 +16467,9 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 							gsl_matrix_free(Pmatrix);
 						}
 						(stateprobatnodes[currentnode]).push_back(probofstatei);
+						if (debugmode) {
+							cout<<"CalculateDiscreteCharLnL: i = "<<i<<", probofstatei = "<<probofstatei<<", ln(probofstatei) = "<<log(probofstatei)<<endl;
+						}
 					}
 				}
 				currentnode = n.next();
@@ -16455,7 +16482,242 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 			if (variablecharonly) {
 				L=L/(1.0-Prob); //after equation 3 in Lewis 2001 and equation 8 in Felsenstein 1992
 			}		
+			if (debugmode) {
+				cout<<"CalculateDiscreteCharLnL: original ("<<neglnL<<" * -1.0*log(L) [L="<<L<<"] = ";
+			}
 			neglnL+=-1.0*log(L);
+			if (debugmode) {
+				cout<<neglnL<<endl;
+			}
+			
+		}
+	}
+	discretechosenchar=olddiscretechosenchar;
+	return neglnL;
+}
+*/
+
+/* A failed attempt at a solution
+//Calculates the likelihood of discrete character discretechosenchar on tree chosentree
+//Uses logs on the down pass and some crude approaches to prevent underflows
+double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector)
+{
+	double neglnL=0;
+	double Prob=0;
+	if (variablecharonly) {
+		Prob=CalculateDiscreteCharProbAllConstant(RateMatrix,ancestralstatevector);
+	}			
+	int startingdiscretechosenchar=discretechosenchar;
+	int endingdiscretechosenchar=discretechosenchar+1;
+	if (allchar) {
+		startingdiscretechosenchar=0;
+		endingdiscretechosenchar=discretecharacters->GetNChar();
+	}
+	int olddiscretechosenchar=discretechosenchar;
+	for (discretechosenchar=startingdiscretechosenchar;discretechosenchar<endingdiscretechosenchar;discretechosenchar++) {
+		if ((discretecharacters->GetObsNumStates(discretechosenchar))>1 || variablecharonly==false) { //so, ignore invariant characters if variablecharonly==true
+			 double L=0;
+			map<Node*, vector< double> > stateprobatnodes; //actually, -ln(probability)
+			Tree T=intrees.GetIthTree(chosentree-1);
+			NodeIterator <Node> n (T.GetRoot()); //Goes from tips down
+			NodePtr currentnode = n.begin();
+			while (currentnode)
+			{
+				if (currentnode->IsLeaf() ) {
+					int statenumber=discretecharacters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),discretechosenchar); //NOTE: for discrete chars, the number starts at 0
+					for(int j=0;j<ancestralstatevector->size;j++) {
+						 double probofstatej=-log(0); //do all in -ln(prob)
+						if (j==statenumber) {
+							probofstatej=-log(1.0); 
+						}
+						(stateprobatnodes[currentnode]).push_back(probofstatej);
+						if (debugmode) {
+							cout<<"CalculateDiscreteCharLnL: j = "<<j<<", probofstatej = "<<probofstatej<<", exp(-probofstatej) = "<<exp(-probofstatej)<<endl;
+						}
+						
+					}
+				}
+				else { //must be an internal node, including the root
+					for(int i=0;i<ancestralstatevector->size;i++) { //do this for each possible state at the current node
+						NodePtr descnode=currentnode->GetChild();
+						double probofstatei=0;
+						while (descnode!=NULL) { 
+							gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,descnode->GetEdgeLength()); //this is in terms of probabilities, not log probabilities
+							if (debugmode) {
+								PrintMatrix(Pmatrix);
+							}
+							double probofthissubtree=0;
+							double minimumdescendantstateprob=GSL_POSINF; //This is used to rescale the probabilities
+							for (int k=0; k<ancestralstatevector->size; k++) {
+								minimumdescendantstateprob=GSL_MIN((stateprobatnodes[descnode])[k],minimumdescendantstateprob);
+							}
+							for(int j=0;j<ancestralstatevector->size;j++) {
+								 //here, for ancestor with state i and descendant with state j, we want to calculate the probability of going from i to j multiplied by the probability of subtree j
+								//that is, P(i,j) * P(subtree j)
+								//and then add those for each possible j to get P(subtree i).
+								//The problem is that P(subtree j) can get too small for even long doubles.
+								//The solution is to calculate 
+								//  ( P(i,j1)*P(subtree j1)*scaling_factor + P(i,j2)*P(subtree j2)*scaling_factor + P(i,j3)*P(subtree j3)*scaling_factor + ...) / scaling_factor
+								// and then take the negative log of this for storing back as the -ln(probability) of subtree i
+								// (stateprobatnodes[descnode])[j] = -ln(P(subtree j1))
+								// P(subtree j1) = exp(-(stateprobatnodes[descnode])[j])
+								// P(subtree j1) / scaling_factor = exp(-(stateprobatnodes[descnode])[j]) / scaling_factor
+								// P(subtree j1) / scaling_factor = exp(-(stateprobatnodes[descnode])[j]) / exp(different_factor)
+								// P(subtree j1) / scaling_factor = exp( -(stateprobatnodes[descnode])[j] - different_factor)
+								//for different factor, use different_factor=min(stateprobatnodes[descnode]) 
+								//[could have used max, but -ln(0) = +inf, and we'd see these for things like tips, where prababilities of some states is 0]
+								
+								
+								probofthissubtree+=(gsl_matrix_get(Pmatrix,i,j))*exp(-1.0*((stateprobatnodes[descnode])[j]-minimumdescendantstateprob)); //Prob of going from i to j on desc branch times the prob of the subtree with root state j
+								if (debugmode) {
+									cout<<"going from "<<i<<" to "<<j<<" has move prob "<<gsl_matrix_get(Pmatrix,i,j)<<" descendant prob "<<exp(-1.0*((stateprobatnodes[descnode])[j]))<<" total prob "<<(gsl_matrix_get(Pmatrix,i,j))*exp(-1.0*((stateprobatnodes[descnode])[j]))<<" and rescaled prob "<<(gsl_matrix_get(Pmatrix,i,j))*exp(-1.0*((stateprobatnodes[descnode])[j]-minimumdescendantstateprob))<<" with scaling factor "<<minimumdescendantstateprob<<endl;
+								}
+							}
+							//Now take -ln( P(i,j1)*P(subtree j1)*scaling_factor + P(i,j2)*P(subtree j2)*scaling_factor + P(i,j3)*P(subtree j3)*scaling_factor + ...) / scaling_factor)
+							// = -ln (probofthissubtree / scaling_factor)
+							// = -ln (probofthisubtree) - (-ln(scaling_factor))
+							// = -ln (probofthisubtree) - different_factor
+							probofstatei+=-(log(probofthissubtree))-minimumdescendantstateprob;
+							descnode=descnode->GetSibling(); //we're going to look at all descendant subtrees (even in case of polytomies)
+							gsl_matrix_free(Pmatrix);
+						}
+						(stateprobatnodes[currentnode]).push_back(probofstatei);
+						if (debugmode) {
+							cout<<"CalculateDiscreteCharLnL: i = "<<i<<", probofstatei = "<<probofstatei<<", exp(-probofstatei) = "<<exp(-probofstatei)<<endl;
+						}
+					}
+				}
+				currentnode = n.next();
+				
+			}
+	//now, finish up by getting the weighted sum at the root
+			double minimumdescendantstateprob=GSL_POSINF; //This is used to rescale the probabilities
+			for (int k=0; k<ancestralstatevector->size; k++) {
+				minimumdescendantstateprob=GSL_MIN((stateprobatnodes[T.GetRoot()])[k],minimumdescendantstateprob);
+			}
+			
+			for (int i=0;i<ancestralstatevector->size;i++) {
+				L+=(gsl_vector_get(ancestralstatevector,i))*exp(-1.0*((stateprobatnodes[T.GetRoot()])[i]-minimumdescendantstateprob));
+			}
+			if (variablecharonly) {
+				L=L/(1.0-Prob); //after equation 3 in Lewis 2001 and equation 8 in Felsenstein 1992
+			}		
+
+			if (debugmode) {
+				cout<<"CalculateDiscreteCharLnL: original ("<<neglnL<<" * -1.0*log(L) [L="<<L<<"] = ";
+			}
+			neglnL+=-(log(L))-minimumdescendantstateprob;
+			if (debugmode) {
+				cout<<neglnL<<endl;
+			}
+			
+		}
+	}
+	discretechosenchar=olddiscretechosenchar;
+	return neglnL;
+}
+*/
+
+
+//Calculates the likelihood of discrete character discretechosenchar on tree chosentree
+//Deals with underflow issues by using superdouble
+double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector)
+{
+	double neglnL=0;
+	double Prob=0;
+	if (variablecharonly) {
+		Prob=CalculateDiscreteCharProbAllConstant(RateMatrix,ancestralstatevector);
+	}			
+	int startingdiscretechosenchar=discretechosenchar;
+	int endingdiscretechosenchar=discretechosenchar+1;
+	if (allchar) {
+		startingdiscretechosenchar=0;
+		endingdiscretechosenchar=discretecharacters->GetNChar();
+	}
+	int olddiscretechosenchar=discretechosenchar;
+	for (discretechosenchar=startingdiscretechosenchar;discretechosenchar<endingdiscretechosenchar;discretechosenchar++) {
+		if ((discretecharacters->GetObsNumStates(discretechosenchar))>1 || variablecharonly==false) { //so, ignore invariant characters if variablecharonly==true
+			Superdouble L=0;
+			map<Node*, vector<Superdouble> > stateprobatnodes;
+			Tree T=intrees.GetIthTree(chosentree-1);
+			NodeIterator <Node> n (T.GetRoot()); //Goes from tips down
+			NodePtr currentnode = n.begin();
+			while (currentnode)
+			{
+				if (currentnode->IsLeaf() ) {
+					int statenumber=discretecharacters->GetInternalRepresentation(taxa->FindTaxon(currentnode->GetLabel()),discretechosenchar); //NOTE: for discrete chars, the number starts at 0
+					for(int j=0;j<ancestralstatevector->size;j++) {
+						Superdouble probofstatej=0; //do all in straight prob, then convert to ln L
+						if (j==statenumber) {
+							probofstatej=1; 
+						}
+						(stateprobatnodes[currentnode]).push_back(probofstatej);
+						if (debugmode) {
+							cout<<"CalculateDiscreteCharLnL: j = "<<j<<", probofstatej = "<<probofstatej<<", -ln(probofstatej) = "<<-1.0*probofstatej.getLn()<<endl<<endl;
+						}
+						
+					}
+					
+				}
+				else { //must be an internal node, including the root
+					for(int i=0;i<ancestralstatevector->size;i++) { //do this for each possible state at the current node
+						NodePtr descnode=currentnode->GetChild();
+						Superdouble probofstatei=1;
+						while (descnode!=NULL) { 
+							gsl_matrix * Pmatrix=ComputeTransitionProb(RateMatrix,descnode->GetEdgeLength());
+							Superdouble probofthissubtree=0;
+							if (debugmode) {
+								Tree PrunedTree;
+								PrunedTree.SetRoot((intrees.GetIthTree(chosentree-1)).CopyOfSubtree(descnode));
+								cout<<endl;
+								PrunedTree.Write(cout);
+							}
+							for(int j=0;j<ancestralstatevector->size;j++) {
+								Superdouble transitionprob=gsl_matrix_get(Pmatrix,i,j);
+								probofthissubtree+=transitionprob*((stateprobatnodes[descnode])[j]); //Prob of going from i to j on desc branch times the prob of the subtree with root state j
+								if (debugmode) {
+									cout<<"From "<<i<<" to "<<j<<" has move prob "<<gsl_matrix_get(Pmatrix,i,j)<<" and input subtree prob "<<((stateprobatnodes[descnode])[j])<<" product "<<transitionprob*((stateprobatnodes[descnode])[j])<<" and cumulative prob "<<probofthissubtree<<endl;
+								}
+							}
+							probofstatei*=probofthissubtree;
+							descnode=descnode->GetSibling(); //we're going to look at all descendant subtrees (even in case of polytomies)
+							gsl_matrix_free(Pmatrix);
+						}
+						(stateprobatnodes[currentnode]).push_back(probofstatei);
+						if (debugmode) {
+							cout<<"CalculateDiscreteCharLnL: i = "<<i<<", probofstatei = "<<probofstatei<<", -ln(probofstatei) = "<<-1.0*probofstatei.getLn()<<endl<<endl;
+						}
+					}
+				}
+				if (debugmode) {
+					Superdouble totalprob=0;
+					cout<<"(stateprobatnodes[currentnode])[i] ";
+					for(int i=0;i<ancestralstatevector->size;i++) {
+						cout<<"state "<<i<<" "<<(stateprobatnodes[currentnode])[i]<<" [totalprob is "<<totalprob<<"], ";
+						totalprob+=(stateprobatnodes[currentnode])[i];
+					}
+					cout<<" mantissa="<<totalprob.getMantissa()<<"total = "<<totalprob<<endl;
+					assert(totalprob.getMantissa()>0);
+				}
+				currentnode = n.next();
+				
+			}
+	//now, finish up by getting the weighted sum at the root
+			for (int i=0;i<ancestralstatevector->size;i++) {
+				Superdouble ancestralprob=gsl_vector_get(ancestralstatevector,i);
+				L+=ancestralprob*((stateprobatnodes[T.GetRoot()])[i]);
+			}
+			if (variablecharonly) {
+				L=L/Superdouble(1.0-Prob); //after equation 3 in Lewis 2001 and equation 8 in Felsenstein 1992
+			}		
+			if (debugmode) {
+				cout<<"CalculateDiscreteCharLnL: original ("<<neglnL<<" * -1.0*log(L) [L="<<L<<"] = ";
+			}
+			neglnL+=-1.0*L.getLn();
+			if (debugmode) {
+				cout<<neglnL<<endl;
+			}
+			
 		}
 	}
 	discretechosenchar=olddiscretechosenchar;
