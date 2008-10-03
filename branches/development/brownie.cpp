@@ -5353,16 +5353,9 @@ void BROWNIE::ComputeAccuracy() {
 		Tree CurrentGeneTreeTreeFmt=intrees.GetIthTree(selectedtree);
 		ContainingTree CurrentGeneTree;
 		CurrentGeneTree.SetRoot(CurrentGeneTreeTreeFmt.CopyOfSubtree(CurrentGeneTreeTreeFmt.GetRoot()));
-		NodeIterator <Node> n (CurrentGeneTree.GetRoot());
-        NodePtr currentnode = n.begin();
-        int speciescount=-1;
-        while (currentnode)
-        {
-            if (!(currentnode->IsLeaf())) {
-                speciescount++; //includes Root
-            }
-            currentnode = n.next();
-        }
+		CurrentGeneTree.FindAndSetRoot();
+		CurrentGeneTree.Update();
+        int speciescount=CurrentGeneTree.GetNumInternals();
 		
 		int ntaxincommon=PrepareTreesForTriplet(&ModifiedTrueTree,&CurrentGeneTree);
 		vector<int> tripletoverlapoutput=GetTripletOverlap(&ModifiedTrueTree,&CurrentGeneTree,ntaxincommon);
