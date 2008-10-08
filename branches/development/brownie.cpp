@@ -5355,7 +5355,24 @@ void BROWNIE::ComputeAccuracy() {
 		CurrentGeneTree.SetRoot(CurrentGeneTreeTreeFmt.CopyOfSubtree(CurrentGeneTreeTreeFmt.GetRoot()));
 		CurrentGeneTree.FindAndSetRoot();
 		CurrentGeneTree.Update();
-        int speciescount=CurrentGeneTree.GetNumInternals();
+		
+		//Get number of species. The idea here is that each node immediately ancestral to one species is a species. This covers the case of a species tree with two clades, representing 2 species, as well as when there's a paraphyletic species tree (some tips connecting to the root and the others to some descendant node)
+		typedef map<NodePtr, int> AncestorCountType;
+        AncestorCountType AncestorCount;
+		NodeIterator <Node> n (CurrentGeneTree.GetRoot());
+		NodePtr currentnode = n.begin();
+		while (currentnode)
+		{
+			if (currentnode->IsLeaf()) {
+				++AncestorCount[currentnode->GetAnc()];
+			}
+			currentnode=n.next();
+			
+		}
+		int speciescount=AncestorCount.size();
+		if (debugmode) {
+			CurrentGeneTree.ReportTreeHealth();
+		}
 		
 		int ntaxincommon=PrepareTreesForTriplet(&ModifiedTrueTree,&CurrentGeneTree);
 		vector<int> tripletoverlapoutput=GetTripletOverlap(&ModifiedTrueTree,&CurrentGeneTree,ntaxincommon);
