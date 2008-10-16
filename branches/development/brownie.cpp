@@ -15774,29 +15774,31 @@ gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 					hitlimitscount++;
 				}
 				message="Replicate ";
-				message+=startnum+1;
-				if (hitlimits) {
-					message+=" **WARNING**";
+				if (detailedoutput) {
+					message+=startnum+1;
+					if (hitlimits) {
+						message+=" **WARNING**";
+					}
+					message+="\n   NM iterations needed = ";
+					int iterationsrequired=iter;
+					message+=iterationsrequired;
+					if (hitlimits) {
+						message+=" **Max iterations hit; see WARNING below**";
+					}
+					message+="\n   -LnL = ";
+					char outputstring[60];
+					sprintf(outputstring,"%60.45f",1.0*(s->fval));
+					if (roundedwasbetter) {
+						sprintf(outputstring,"%60.45f",1.0*roundlikelihood);					
+					}
+					message+=outputstring;
+					message+="\n   Starts:    ";
+					for (int parameternumber=0; parameternumber<np; parameternumber++) {
+						message+=startingvalues[startnum][parameternumber];
+						message+=" ";
+					}				
+					message+="\n   Estimates: ";
 				}
-				message+="\n   NM iterations needed = ";
-				int iterationsrequired=iter;
-				message+=iterationsrequired;
-				if (hitlimits) {
-					message+=" **Max iterations hit; see WARNING below**";
-				}
-				message+="\n   -LnL = ";
-				char outputstring[60];
-				sprintf(outputstring,"%60.45f",1.0*(s->fval));
-				if (roundedwasbetter) {
-					sprintf(outputstring,"%60.45f",1.0*roundlikelihood);					
-				}
-				message+=outputstring;
-				message+="\n   Starts:    ";
-				for (int parameternumber=0; parameternumber<np; parameternumber++) {
-					message+=startingvalues[startnum][parameternumber];
-					message+=" ";
-				}				
-				message+="\n   Estimates: ";
 				for (int parameternumber=0; parameternumber<np; parameternumber++) {
 					if(roundedwasbetter) {
 						estimates[startnum][parameternumber]=gsl_vector_get(roundx,parameternumber);
@@ -15809,8 +15811,10 @@ gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 							estimates[startnum][parameternumber]=gsl_vector_get(s->x,parameternumber);
 						}
 					}
-					message+=estimates[startnum][parameternumber];
-					message+=" ";
+					if (detailedoutput) {
+						message+=estimates[startnum][parameternumber];
+						message+=" ";
+					}
 				}		
 			// message+="\n   Rate = ";
 			// message+=gsl_vector_get(s->x,0);
