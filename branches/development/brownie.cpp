@@ -12432,6 +12432,8 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
             }
         }
         Tree t = intrees.GetIthTree(chosentree-1);
+		t.Update();
+		t.SetPathLengths();
         cout << endl << "Postorder traversal of tree" << endl;
         cout << "Node Length     Label                           Type" << endl;
         cout << "----------------------------------------------------" << endl;
@@ -12442,7 +12444,7 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
         Node *p=n.begin();
         Node *b=n.begin();
         Node *mrca=n.begin();
-
+		nxsstring listofchanges="\n\nList of changes";
         bool notfirstleaf=false;
         while (q)
         {
@@ -12467,12 +12469,24 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
 				}
 				cout<<") "<<endl;
 				vector<int> stateordervector(q->GetStateOrder()); 
+				vector<double> statetimesvector(q->GetStateTimes());
 				cout<<"\tStateOrder: ( ";
 				for (int i=0;i<stateordervector.size();i++) {
 					cout<<stateordervector[i]<<" ";
+					if (i>0) {
+						listofchanges+="\nchange ";
+						listofchanges+=stateordervector[i-1];
+						listofchanges+=" -> ";
+						listofchanges+=stateordervector[i];
+						double timeofchange=(q->GetPathLength())-(q->GetEdgeLength());
+						for (int j=0; j<i; j++) {
+							timeofchange+=statetimesvector[j];
+						}
+						listofchanges+=" at time above root of ";
+						listofchanges+=timeofchange;
+					}
 				}
 				cout<<") "<<endl;			
-				vector<double> statetimesvector(q->GetStateTimes());
 				cout<<"\tStateTimes: ( ";
 				for (int i=0;i<statetimesvector.size();i++) {
 					cout<<statetimesvector[i]<<" ";
@@ -12483,6 +12497,7 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
                 //gsl_vector modelcatoutput(q->GetModelCategory());
                 //cout<<modelcatoutput->size;
                 cout<<"\t length from root="<<q->GetPathLength();
+				cout<<endl<<" length of edge="<<q->GetEdgeLength();
                 float pathlength=0;
                 a=q;
                 if(notfirstleaf) {
@@ -12541,16 +12556,49 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
                 else {
                     cout <<" Node not marked  ModelCategorySize: ";
                 }
+				vector<double> modelcatoutput(q->GetModelCategory());
+				cout<<"( ";
+				for (int i=0;i<modelcatoutput.size();i++) {
+					cout<<modelcatoutput[i]<<" ";
+				}
+				cout<<") "<<endl;
+				vector<int> stateordervector(q->GetStateOrder()); 
+				vector<double> statetimesvector(q->GetStateTimes());
+				cout<<"\tStateOrder: ( ";
+				for (int i=0;i<stateordervector.size();i++) {
+					cout<<stateordervector[i]<<" ";
+					if (i>0) {
+						listofchanges+="\nchange ";
+						listofchanges+=stateordervector[i-1];
+						listofchanges+=" -> ";
+						listofchanges+=stateordervector[i];
+						double timeofchange=(q->GetPathLength())-(q->GetEdgeLength());
+						for (int j=0; j<i; j++) {
+							timeofchange+=statetimesvector[j];
+						}
+						listofchanges+=" at time above root of ";
+						listofchanges+=timeofchange;
+					}					
+				}
+				cout<<") "<<endl;			
+				cout<<"\tStateTimes: ( ";
+				for (int i=0;i<statetimesvector.size();i++) {
+					cout<<statetimesvector[i]<<" ";
+				}
+				cout<<") "<<endl;	
                 //gsl_vector *modelcatoutput;
                 //modelcatoutput=gsl_vector_calloc(q->GetModelCategory());
                 //gsl_vector modelcatoutput(q->GetModelCategory());
                 //cout<<modelcatoutput->size;
                 cout<<" length from root="<<q->GetPathLength();
+				cout<<endl<<" length of edge="<<q->GetEdgeLength();
             }
             cout << endl;
             q = n.next();
         }
         cout << "----------------------------------------------------" << endl;
+		message=listofchanges;
+		PrintMessage();
     }
 
 /**
@@ -16987,8 +17035,19 @@ gsl_matrix * BROWNIE::ComputeTransitionProb(gsl_matrix *RateMatrix, double brlen
 */
 void BROWNIE::HandleTimeSlice( NexusToken& token )
 {
+	staterestrictionvector.clear();
+	timeslicetimes.clear();
+	timeslicemodels.clear();
+	for (int state=0;state<=(maxModelCategoryStates-1);state++) {
+        staterestrictionvector.push_back(state);
+        timeslicetimes.push_back(GSL_POSINF);
+        timeslicemodels.push_back(0);
+    }
+	
     bool noerror=true;
     bool adequateinput=false;
+	bool enteredsplit=false;
+	bool enteredmodel=false;
     for(;;)
     {
         token.GetNextToken();
@@ -17010,11 +17069,13 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
             // message+="\nTaxset       <taxset name>                        *All";
             // message+="\nFromRoot     No|Yes                               *No";
             message+="\n                                                 *Option is nonpersistent\n\n";
-            message+="This will allow assignment of different models on the specified intervals across all trees.\nFor example, to specify one rate parameter for the interval from the present to 50 MYA,\nanother rate parameter from 50 MYA to 65 MYA, and the first rate parameter again from 65 MYA\nto the root of the phylogeny:\n\n  Time Model\n   0     1\n   5     1\n   .     .\n  45     1\n__50_____1_\n| 50     2 |\n| 55     2 |\n| 60     2 |\n|_65_____2_|\n  65     1\n  70     1\n   .     .\n\none would type\n\nTimeslice splits=(50 65) models=(1 2 1);\n\nSplits specifies where one model changes to the other;\nthere should be one fewer split than there are intervals.\nEdges spanning a split are properly divided\n(so a given path may have more than one model).\n\nBy default, times are measured from the most recent taxon. \nTo specify that they should be measured from the root instead, specify fromroot=yes;\nThis becomes most important when the root node may be of different depths in different trees.\nNote that you are currently limited to only 9 splits (if this becomes a problem, email brownie@brianomeara.info).";
+            message+="This will allow assignment of different models on the specified intervals across all trees.\nFor example, to specify one rate parameter for the interval from the present to 50 MYA,\nanother rate parameter from 50 MYA to 65 MYA, and the first rate parameter again from 65 MYA\nto the root of the phylogeny:\n\n  Time Model\n   0     1\n   5     1\n   .     .\n  45     1\n__50_____1_\n| 50     2 |\n| 55     2 |\n| 60     2 |\n|_65_____2_|\n  65     1\n  70     1\n   .     .\n\none would type\n\nTimeslice splits=(50 65) models=(1 2 1);\n\nSplits specifies where one model changes to the other;\nthere should be one fewer split than there are intervals.\nEdges spanning a split are properly divided\n(so a given path may have more than one model).\n\nBy default, times are measured from the most recent taxon. \nTo specify that they should be measured from the root instead, specify fromroot=yes [NOT IMPLEMENTED YET];\nThis becomes most important when the root node may be of different depths in different trees.\nNote that you are currently limited to only 9 splits (if this becomes a problem, email brownie@brianomeara.info).\nDoing this command will overwrite any previous splits or discrete character mappings.";
             PrintMessage();
         }
         else if( token.Abbreviation("Splits") ) {
+			enteredsplit=true;
             token.GetNextToken();
+			token.GetNextToken(); //eat the equals sign
             if (!token.Equals("(")) {
                 errormsg="Expecting next token to be a \'(\' but instead got ";
                 errormsg+=token.GetToken();
@@ -17022,29 +17083,35 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
             }
             token.GetNextToken(); //Should be a number
             int splitposcount=0;
-            while (!token.Equals(")")) {
+			while (!token.Equals(")")) {
+				cout<<"token is "<<token.GetToken();
                 nxsstring numbernexus;
-                numbernexus=GetNumber(token);
-                timeslicetimes[0]=atof( numbernexus.c_str() );
+                numbernexus=token.GetToken();
+				token.GetNextToken();
+                timeslicetimes[splitposcount]=atof( numbernexus.c_str() );
                 splitposcount++;
-                token.GetNextToken();
             }
         }
         else if( token.Abbreviation("Models") ) {
             token.GetNextToken();
+			token.GetNextToken(); //eat the equals sign
+			enteredmodel=true;
             if (!token.Equals("(")) {
                 errormsg="Expecting next token to be a \'(\' but instead got ";
                 errormsg+=token.GetToken();
                 throw XNexus( errormsg);
             }
             token.GetNextToken(); //Should be a number
-            int modelposcount=0;
+			int modelposcount=0;
             while (!token.Equals(")")) {
+				cout<<"token is "<<token.GetToken();
                 nxsstring numbernexus;
-                numbernexus=GetNumber(token);
-                timeslicemodels[0]=atoi( numbernexus.c_str() )-1;
+                numbernexus=token.GetToken();
+				token.GetNextToken();
+				cout<<" modelposcount="<<modelposcount<<" number="<<numbernexus.c_str()<<" numbernexus="<<numbernexus<<endl;
+                timeslicemodels[modelposcount]=atoi( numbernexus.c_str() )-1;
                 modelposcount++;
-                token.GetNextToken();
+                //token.GetNextToken();
             }
         }
         else if (token.Abbreviation("Taxset") ) {
@@ -17059,12 +17126,80 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
         }
         //timeslicetimes[9]=GSL_POSINF;
         //timeslicemodels;
-
+		
     }
     //if (__________EVERYTHING IS OKAY__________) {
+	if (enteredsplit && enteredmodel) { //Everything is okay?
+		adequateinput=true;
+		int originalchosentree=chosentree;
+		for (chosentree = 0; chosentree < trees->GetNumTrees(); chosentree++) {
+			Tree *Tptr=&(intrees.Trees[chosentree-1]);
+			(*Tptr).SetPathLengths();
+			double MaxLength=(*Tptr).GetMaxPathLength();
+			//cout<<"MaxPathLength = "<<MaxLength<<endl;
+			NodeIterator <Node> n ((*Tptr).GetRoot());
+			Node *q = n.begin();
+			while (q)
+			{
+				if (q!=(*Tptr).GetRoot()) {
+					double BeginTime=MaxLength-(q->GetPathLength());
+					double EndTime=BeginTime+(q->GetEdgeLength());
+				//cout<<endl<<endl<<"---------------------------------"<<endl<<"Begin time="<<BeginTime<<" EndTime="<<EndTime<<endl<<"PathLength="<<q->GetPathLength()<<endl<<"EdgeLength="<<q->GetEdgeLength()<<endl;
+					vector<double> modelvector(maxModelCategoryStates,0.0); //maxModelCategoryStates is in TreeLib.h
+					vector<int> stateordervector;
+					vector<double> statetimesvector; 
+					double RegimeStartTime=0;
+					double RegimeEndTime=MaxLength;
+					for (int i=0; i<timeslicemodels.size(); i++) {
+						if (i>0) {
+							RegimeStartTime=timeslicetimes[i-1];
+							if (gsl_isinf(timeslicetimes[i-1])!=0) {
+								RegimeStartTime=MaxLength;
+							}
+							
+						}
+						if (gsl_isinf(timeslicetimes[i])==0) {
+							RegimeEndTime=timeslicetimes[i];
+						}
+						else {
+							RegimeEndTime=MaxLength;
+						}
+						//cout<<endl<<"Regime "<<i<<" state "<<timeslicemodels[i]<<" "<<RegimeStartTime<<"-"<<RegimeEndTime;
+						if (BeginTime<RegimeEndTime && BeginTime<EndTime) {
+					//	cout<<"  IN REGIME";
+							double timeinstate=GSL_MIN(RegimeEndTime,EndTime)-BeginTime;
+							modelvector[(timeslicemodels[i])]+=timeinstate;
+							stateordervector.push_back(timeslicemodels[i]);
+							statetimesvector.push_back(timeinstate);
+							BeginTime=GSL_MIN(RegimeEndTime,EndTime);
+						}
+					}
+					q->SetModelCategory(modelvector); 
+					q->SetStateOrder(stateordervector); 
+					q->SetStateTimes(statetimesvector);
+					/*	cout<<endl<<"modelvector"<<endl;
+					for (int i=0; i<modelvector.size(); i++) {
+						cout<<modelvector[i]<<"\t";
+					}
+					cout<<endl<<"stateordervector"<<endl;
+					for (int i=0; i<stateordervector.size(); i++) {
+						cout<<stateordervector[i]<<"\t";
+					}
+					
+					cout<<endl<<"statetimesvector"<<endl;
+					for (int i=0; i<statetimesvector.size(); i++) {
+						cout<<statetimesvector[i]<<"\t";
+					} */
+					
+				}
+				q = n.next();
+			}
+		}
+		
+	}
     //Do the set model thing
     //}
-
+	
 }
 
 

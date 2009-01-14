@@ -119,7 +119,8 @@ public:
 	 * @return The tree
 	 */
 	 virtual T GetIthTree (int i) { return Trees[i]; };
-	/**
+
+	 /**
 	 * @brief The name of the ith tree in the profile
 	 *
 	 * @param i the index of the tree in the range 0 - (n-1)
