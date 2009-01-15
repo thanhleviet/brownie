@@ -17084,7 +17084,7 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
             token.GetNextToken(); //Should be a number
             int splitposcount=0;
 			while (!token.Equals(")")) {
-				cout<<"token is "<<token.GetToken();
+				//cout<<"token is "<<token.GetToken();
                 nxsstring numbernexus;
                 numbernexus=token.GetToken();
 				token.GetNextToken();
@@ -17104,11 +17104,11 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
             token.GetNextToken(); //Should be a number
 			int modelposcount=0;
             while (!token.Equals(")")) {
-				cout<<"token is "<<token.GetToken();
+				//cout<<"token is "<<token.GetToken();
                 nxsstring numbernexus;
                 numbernexus=token.GetToken();
 				token.GetNextToken();
-				cout<<" modelposcount="<<modelposcount<<" number="<<numbernexus.c_str()<<" numbernexus="<<numbernexus<<endl;
+				//cout<<" modelposcount="<<modelposcount<<" number="<<numbernexus.c_str()<<" numbernexus="<<numbernexus<<endl;
                 timeslicemodels[modelposcount]=atoi( numbernexus.c_str() )-1;
                 modelposcount++;
                 //token.GetNextToken();
@@ -17132,7 +17132,7 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
 	if (enteredsplit && enteredmodel) { //Everything is okay?
 		adequateinput=true;
 		int originalchosentree=chosentree;
-		for (chosentree = 0; chosentree < trees->GetNumTrees(); chosentree++) {
+		for (chosentree = 1; chosentree <= trees->GetNumTrees(); chosentree++) {
 			Tree *Tptr=&(intrees.Trees[chosentree-1]);
 			(*Tptr).SetPathLengths();
 			double MaxLength=(*Tptr).GetMaxPathLength();
@@ -17195,7 +17195,7 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
 				q = n.next();
 			}
 		}
-		
+		chosentree=originalchosentree;
 	}
     //Do the set model thing
     //}
