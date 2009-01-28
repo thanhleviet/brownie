@@ -2,7 +2,7 @@
 #ifndef __BROWNIE_H
 #define __BROWNIE_H
 
-#define COMMAND_MAXLEN  255
+#define COMMAND_MAXLEN  6000// used to be 255
 #define PI 3.141592653589793238462643383279502884197169399375
 #define maxModelCategoryStates         10
 #include <gsl/gsl_math.h>
