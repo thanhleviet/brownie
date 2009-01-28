@@ -10664,6 +10664,12 @@ void BROWNIE::PreprocessNextCommand()
         next_command[i] = ';';
         i++;
     }
+	if (i> COMMAND_MAXLEN) {
+		cout<<"The maximum command length is "<<COMMAND_MAXLEN<<" but the following line is "<<i<<" characters long"<<endl;
+		nxsstring toolong="";
+		toolong+=next_command;
+		cout<<toolong<<endl;
+	}
     assert( i <= COMMAND_MAXLEN );
     next_command[i] = '\0';
 
