@@ -799,49 +799,49 @@ void BROWNIE::HandleHelp( NexusToken& token )
     }
 
 	message = "\nGeneral commands:";
-    message += "\n  help           -> shows this message";
-    message += "\n  exe            -> executes nexus file";
-    message += "\n  log            -> log output";
-    message += "\n  echo           -> copies your commands into a batch file";
-    //message += "\n  gettree        -> loads tree file";
-    message += "\n  blocks         -> reports on blocks currently stored";
-    message += "\n  showtree       -> displays currently loaded tree(s)";
-	message += "\n  choose         -> chooses tree or char for analysis";
-    message += "\n  taxset         -> stores a taxset";
-	message += "\n  citation       -> outputs list of relevant papers for your analyses";
-	message += "\n  tipvalues      -> return list of tip values";
-	message += "\n  quit           -> terminates application";
+    message += "\n  help             -> shows this message";
+    message += "\n  exe              -> executes nexus file";
+    message += "\n  log              -> log output";
+    message += "\n  echo             -> copies your commands into a batch file";
+    //message += "\n  gettree          -> loads tree file";
+    message += "\n  blocks           -> reports on blocks currently stored";
+    message += "\n  showtree         -> displays currently loaded tree(s)";
+	message += "\n  choose           -> chooses tree or char for analysis";
+    message += "\n  taxset           -> stores a taxset";
+	message += "\n  citation         -> outputs list of relevant papers for your analyses";
+	message += "\n  tipvalues        -> return list of tip values";
+	message += "\n  quit             -> terminates application";
 	message += "\n\nCharacter evolution:";
-    message += "\n  ratetest       -> does censored rate test (original Brownie function)";
-    message += "\n  vcv            -> outputs a variance-covariance matrix";
-	message += "\n  discrete       -> implements discrete character models and reconstructions";
-    message += "\n  [tipvariance]  -> allows program to deal with variance in taxon means";
-    message += "\n  model          -> sets model of continuous character evolution (OU, BM, etc)";
-    message += "\n  continuous     -> gets score for chosen taxset for chosen model";
-    message += "\n  [export]       -> exports a tree and data in deprecated Pagel format";
-	message += "\n  simulate       -> simulate discrete or continuous character matrices";
-	message += "\n  loss           -> estimate rates of binary character loss on branches";
+    message += "\n  ratetest         -> does censored rate test (original Brownie function)";
+    message += "\n  vcv              -> outputs a variance-covariance matrix";
+	message += "\n  (discrete)       -> implements discrete character models and reconstructions";
+    message += "\n  [tipvariance]    -> allows program to deal with variance in taxon means";
+    message += "\n  model            -> sets model of continuous character evolution (OU, BM, etc)";
+    message += "\n  (continuous)     -> gets score for chosen taxset for chosen model";
+    message += "\n  [export]         -> exports a tree and data in deprecated Pagel format";
+	message += "\n  (simulate)       -> simulate discrete or continuous character matrices";
+	message += "\n  loss             -> estimate rates of binary character loss on branches";
 	message += "\n\nSpecies delimitation and  tree search:";
-	message += "\n  hs             -> perform a heuristic search";
-	message += "\n  [jackknife]    -> perform a jackknife search";
-	message += "\n  [exhaustive]   -> perform an exhaustive search";
-	message += "\n  compare        -> compare triplet overlap for coalescent trees";
-	message += "\n  assign         -> assign samples to species";
-	message += "\n  accuracy       -> compute accuracy of reconstruction";
+	message += "\n  (hs)             -> perform a heuristic search";
+	message += "\n  [jackknife]      -> perform a jackknife search";
+	message += "\n  [exhaustive]     -> perform an exhaustive search";
+	message += "\n  compare          -> compare triplet overlap for coalescent trees";
+	message += "\n  assign           -> assign samples to species";
+	message += "\n  (accuracy)       -> compute accuracy of reconstruction";
 	message += "\n\nNumerical optimization settings:";
-	message += "\n  set            -> sets options";
-    message += "\n  numopt         -> sets parameters for numerical optimization functions";	
+	message += "\n  set              -> sets options";
+    message += "\n  numopt           -> sets parameters for numerical optimization functions";	
 	message += "\n\nMiscellaneous:";
-	message += "\n  orderbytree    -> reorders a datamatrix by order of taxa in a tree";
-	message += "\n  printedgelength-> prints branch lengths";
-	message += "\n  partitionededge-> outputs all trees one NNI move away for NNIBS analysis";
+	message += "\n  orderbytree      -> reorders a datamatrix by order of taxa in a tree";
+	message += "\n  printedgelength  -> prints branch lengths";
+	message += "\n  (partitionededge)-> outputs all trees one NNI move away for NNIBS analysis";
 	message += "\n\nIn development:";
     message += "\n  [nast]";	
 	message += "\n  [timeslice]";
 	message += "\n  [debug]";
 	message += "\n  [Garland]";
 
-    message += "\n\nType \"commandname ?\" [without the quotes]\nfor help on any command.\n\nCommands in brackets (\"[]\") should not be used for published results yet";
+    message += "\n\nType \"commandname ?\" [without the quotes]\nfor help on any command.\n\n*** IMPORTANT ***\nCommands in brackets (\"[]\") should not be used for published results yet\nCommands in parentheses (\"()\") should be used after checking with Brian O'Meara (omeara.brian@gmail.com) -- they may reflect things in review which might change pending reviewers' comments, for example";
     PrintMessage();
 }
 
@@ -5784,22 +5784,26 @@ void BROWNIE::HandleCitation( NexusToken& token )
 
 void BROWNIE::PrintCitations()
 {
-	message="Papers whose methods you have used so far in this session:\n[you should read and probably cite them]";
+	message="Papers whose methods you have used so far in this session:\n[you should certainly read and probably cite them]";
 	if (citationarray[0]) {
-		message+="\n\nCitation for this program and for rate comparison methods:\n   O'Meara, B.C., C. Ane, M.J. Sanderson, and P.C. Wainwright. 2006. \"Testing for different rates of evolution using likelihood.\" Evolution 60(5): 922-933";
+		message+="\n\nCitation for this program and for rate comparison methods:\n   O'Meara, B.C., C. Ane, M.J. Sanderson, and P.C. Wainwright. 2006. \"Testing for different rates of continuous trait evolution using likelihood.\" Evolution 60(5): 922-933. http://www.treetapper.org/reference/609";
 	}
 	if (citationarray[1]) {
-		message+="\n\nCitation for constant mean, constant pull OU and ACDC transformations (d and g parameters, respectively):\n   Blomberg, S.P., T. Garland, Jr., and A.R. Ives. 2003. \"Testing for phylogenetic signal in comparative data: Behavioral traits are more labile.\" Evolution 57(4) 717-745.";
+		message+="\n\nCitation for constant mean, constant pull OU and ACDC transformations (d and g parameters, respectively):\n   Blomberg, S.P., T. Garland, Jr., and A.R. Ives. 2003. \"Testing for phylogenetic signal in comparative data: Behavioral traits are more labile.\" Evolution 57(4) 717-745. http://www.treetapper.org/reference/686";
 	}
 				if (citationarray[2]) {
 					message+="\n\nCitations for Ornstein-Uhlenbeck model with multiple means but one attraction and rate parameter:";
-					message+="\n\n   Butler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695.";
-					message+="\n\n   Hansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351.";
+					message+="\n\n   Butler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695. http://www.treetapper.org/reference/677";
+					message+="\n\n   Hansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351. http://www.treetapper.org/reference/718";
 					message+="\n\n   O'Meara, B.C. Brownie v2.0b8. Distributed by the author at http://www.brianomeara.info/brownie";
 				}
 	if (citationarray[3]) {
 		message+="\n\nCitation for species delimitation approach:";
 		message+="\n\n   O'Meara, B.C. MS in prep \"Species delimitation using multiple gene trees\"";
+	}
+	if (citationarray[4]) {
+		message+="\n\nCitation for loss only model:";
+		message+="\n\n   McBride, C.S., J.R. Arguello, B.C. O'Meara 2007 \"Five Drosophila Genomes Reveal Nonneutral Evolution and the Signature of Host Specialization in the Chemoreceptor Superfamily\" Genetics: 177(3): 1395-1395. http://www.treetapper.org/reference/2098";
 	}
 	PrintMessage();
 }
@@ -6858,6 +6862,7 @@ void BROWNIE::HandleModel( NexusToken& token )
 
 void BROWNIE::HandleLoss ( NexusToken& token )
 {
+	citationarray[4]=true;
 	// Retrieve all tokens for this command, stopping only in the event
 	// of a semicolon or an unrecognized keyword
 	//
