@@ -64,7 +64,7 @@ void ContainingTree::ResetBreakVector()
         gsl_ran_shuffle (r, p->data, TempBreakVector.size(), sizeof(size_t));
         for (int i=0; i<TempBreakVector.size(); i++) {
             BreakVector.push_back(TempBreakVector[gsl_permutation_get (p,i)]); //so, assigning nodes in random order to the BreakVector
-                                                                               //cout<<"TempBreakVector[gsl_permutation_get (p,i)] = "<<TempBreakVector[gsl_permutation_get (p,i)]<<endl;
+			//cout<<"TempBreakVector[gsl_permutation_get (p,i)] = "<<TempBreakVector[gsl_permutation_get (p,i)]<<endl;
         }
         //cout<<"BreakV =";
         //for (int j=0; j<BreakVector.size(); j++) {
@@ -100,7 +100,7 @@ void ContainingTree::ResetAttachVector()
         //cout<<"AttachV = ";
         for (int i=0; i<TempAttachVector.size(); i++) {
             AttachVector.push_back(TempAttachVector[gsl_permutation_get (p,i)]); //so, assigning nodes in random order to the AttachVector
-                                                                                 //cout<<TempAttachVector[gsl_permutation_get (p,i)]<<" ";
+			//cout<<TempAttachVector[gsl_permutation_get (p,i)]<<" ";
         }
         //cout<<endl;
         gsl_permutation_free(p);
@@ -151,51 +151,51 @@ bool ContainingTree::NextSPR()
     //    cout<<" "<<BreakVector[j];
     //}
     //cout<<endl;
-bool ThereAreMoreMoves=true;
-NodeToBreakInt=BreakVector.back();
-//cout<<"BreakVector.back() = "<<BreakVector.back()<<endl;
-//cout<<"NodeToBreakInt = "<<NodeToBreakInt<<endl;
-NodeToAttachInt=AttachVector.back();
-AttachVector.pop_back();
-if (AttachVector.empty()) { //We've run out of attachment points with that breakpoint
-    BreakVector.pop_back(); //So delete that breakpoint
-                            //cout<<"after popback, BreakVector now: ";
-                            //for (int j=0; j<BreakVector.size(); j++) {
-                            //    cout<<" "<<BreakVector[j];
-                            //}
-                            //cout<<endl<<endl;
-if (BreakVector.empty()) { //We've also run out of break points
-    ThereAreMoreMoves=false;
-    //  cout<<"\n\n\n*************************Done with that initial tree**********************\n\n\n";
-}
-else { //There are still break points, but now need a new AttachVector
-    ResetAttachVector();
-}
-}
-//Now we can actually do this SPR
-//cout<<"NodeToBreakInt = "<<NodeToBreakInt<<endl;
-//cout<<"NodeToAttachInt = "<<NodeToAttachInt<<endl;
-GetNodeToBreak();
-GetNodeToAttach();
-//cout<<"NodeToBreak = "<<NodeToBreak<<endl;
-//cout<<"NodeToAttach = "<<NodeToAttach<<endl;
-assert(NodeToAttach!=NULL);
-assert(NodeToBreak!=NULL);
-assert(NodeToAttach!=NodeToBreak->GetAnc());
-DeleteSubtendingEdge(NodeToBreak);
-//cout<<endl<<"Just deleted subtending edge"<<endl;
-//ReportTreeHealth();
-FindAndSetRoot();
-NodePtr NewPosition=AddNodeToSubtendingEdge(NodeToAttach);
-(NewPosition->GetChild())->SetSibling(NodeToBreak); //We know NewPosition has one child with no siblings as a result of how we created New Position
-NodeToBreak->SetAnc(NewPosition);
-NewPosition->IncrementDegree();
-//cout<<endl<<endl;
-//ReportTreeHealth();
-//  cout<<endl<<endl;
-FindAndSetRoot();
-Update();
-return ThereAreMoreMoves;
+	bool ThereAreMoreMoves=true;
+	NodeToBreakInt=BreakVector.back();
+	//cout<<"BreakVector.back() = "<<BreakVector.back()<<endl;
+	//cout<<"NodeToBreakInt = "<<NodeToBreakInt<<endl;
+	NodeToAttachInt=AttachVector.back();
+	AttachVector.pop_back();
+	if (AttachVector.empty()) { //We've run out of attachment points with that breakpoint
+		BreakVector.pop_back(); //So delete that breakpoint
+		//cout<<"after popback, BreakVector now: ";
+		//for (int j=0; j<BreakVector.size(); j++) {
+		//    cout<<" "<<BreakVector[j];
+		//}
+		//cout<<endl<<endl;
+		if (BreakVector.empty()) { //We've also run out of break points
+			ThereAreMoreMoves=false;
+			//  cout<<"\n\n\n*************************Done with that initial tree**********************\n\n\n";
+		}
+		else { //There are still break points, but now need a new AttachVector
+			ResetAttachVector();
+		}
+	}
+	//Now we can actually do this SPR
+	//cout<<"NodeToBreakInt = "<<NodeToBreakInt<<endl;
+	//cout<<"NodeToAttachInt = "<<NodeToAttachInt<<endl;
+	GetNodeToBreak();
+	GetNodeToAttach();
+	//cout<<"NodeToBreak = "<<NodeToBreak<<endl;
+	//cout<<"NodeToAttach = "<<NodeToAttach<<endl;
+	assert(NodeToAttach!=NULL);
+	assert(NodeToBreak!=NULL);
+	assert(NodeToAttach!=NodeToBreak->GetAnc());
+	DeleteSubtendingEdge(NodeToBreak);
+	//cout<<endl<<"Just deleted subtending edge"<<endl;
+	//ReportTreeHealth();
+	FindAndSetRoot();
+	NodePtr NewPosition=AddNodeToSubtendingEdge(NodeToAttach);
+	(NewPosition->GetChild())->SetSibling(NodeToBreak); //We know NewPosition has one child with no siblings as a result of how we created New Position
+	NodeToBreak->SetAnc(NewPosition);
+	NewPosition->IncrementDegree();
+	//cout<<endl<<endl;
+	//ReportTreeHealth();
+	//  cout<<endl<<endl;
+	FindAndSetRoot();
+	Update();
+	return ThereAreMoreMoves;
 }
 
 void ContainingTree::GetNodeToBreak() //We need this rigamarole because after doing SPR, the tree has changed, so if we give nextSPR the original tree again, the node ptrs may have changed, but not the order.
@@ -263,7 +263,7 @@ void ContainingTree::ReportTreeHealth()
             else {
                 cout<<"\tChild=NULL";
             }
-            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight()<<endl;
+            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight();
         }
         else if (currentnode==Root)
         {
@@ -286,7 +286,7 @@ void ContainingTree::ReportTreeHealth()
             else {
                 cout<<"\tChild=NULL";
             }
-            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight()<<endl;
+            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight();
         }
         else
         {
@@ -306,11 +306,18 @@ void ContainingTree::ReportTreeHealth()
             else {
                 cout<<"\tChild=NULL";
             }
-            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight()<<endl;
+            cout<<"\tDepth="<<currentnode->GetDepth()<<"\tHeight="<<currentnode->GetHeight();
         }
+		if (GetHasEdgeLengths()) {
+			cout<<" Edge length = "<<currentnode->GetEdgeLength();
+			if (((currentnode->GetEdgeLength())!=(currentnode->GetEdgeLength())) || gsl_isnan(currentnode->GetEdgeLength()) || gsl_isinf(currentnode->GetEdgeLength())) {
+				cout<<" <-is nan";
+			}
+		}
+		cout<<endl;
         currentnode = n.next();
     }
-
+	
 }
 
 void ContainingTree::RandomTree (int ntax) {
@@ -320,7 +327,7 @@ void ContainingTree::RandomTree (int ntax) {
     //cout<<"CurNode = "<<CurNode<<endl<<endl;
     MakeChild();
     LeavesCreated++;
-
+	
     nxsstring buf;
     buf="t";
     buf+=LeavesCreated;
@@ -333,8 +340,8 @@ void ContainingTree::RandomTree (int ntax) {
         AddLeaf(buf);
     }
     for (int nodenumber=0;nodenumber<(ntax-2);nodenumber++) { //A rooted tree with ntax has ntax-1 internal nodes; we've already created 1
-                                                              //Here, we'll randomly select a leaf and cause it to speciate (change it to an internal node).
-                                                              //cout<<endl<<endl<<endl<<"Number of leaves = "<<GetNumLeaves()<<endl;
+		//Here, we'll randomly select a leaf and cause it to speciate (change it to an internal node).
+		//cout<<endl<<endl<<endl<<"Number of leaves = "<<GetNumLeaves()<<endl;
         int chosenleafnumber=int(ceil(gsl_ran_flat (r,0,GetNumLeaves())));
         //cout<<chosenleafnumber<<"=chosenleafnumber"<<endl;
         int currentleafnumber=0;
@@ -389,7 +396,7 @@ void ContainingTree::SpeciateAtLeaf (NodePtr Node)
     Leaves--;
     CurNode=Ancestor->GetChild();
     MakeSibling(); //We replace the leaf that we've just deleted with an internal node (that's sister to its ancestor's daughter).
-                   //Now we create names for the new taxa
+	//Now we create names for the new taxa
     nxsstring NewLeaf1="t";
     LeavesCreated++;
     NewLeaf1+=LeavesCreated;
@@ -417,7 +424,7 @@ void ContainingTree::ConvertTaxonNamesToOrderedTaxonNumbers()
         }
         currentnode = n.next();
     }
-
+	
 }
 
 void ContainingTree::ConvertTaxonNamesToRandomTaxonNumbers()
@@ -449,6 +456,68 @@ void ContainingTree::ConvertTaxonNamesToRandomTaxonNumbers()
 void ContainingTree::NNI () {
 }
 
+//This function does an NNI over the edge below the given node. This node should not be the root node, a child of the root node, or a leaf. There are two possible NNIs for an edge that has each end node of degree 2, resolution=1 or resolution=2 selects which to return
+void ContainingTree::NonRandomNNIAtNode (int chosennodenumber, int resolution) { 
+	
+	FindAndSetRoot();
+	NodeIterator <Node> n (GetRoot());
+    NodePtr currentnode = n.begin();
+    NodePtr SelectedEdgeTipwardNode;
+	int NodesTouched=0;
+    bool selectedanode=false;
+    while (currentnode)
+    {
+        NodesTouched++;
+        //  cout<<chosennodenumber<<"\t"<<NodesTouched<<"\t"<<GetNumNodes()<<endl;
+        if (chosennodenumber==NodesTouched) { // We've found the node to split on
+            if (currentnode!=GetRoot()) {
+                SelectedEdgeTipwardNode=currentnode;
+                selectedanode=true;
+                break;
+            }
+            else {
+                chosennodenumber++; //Don't want to split on the root node
+				//  cout<<"Chosen node was root; choosing next instead"<<endl;
+            }
+        }
+        currentnode = n.next();
+    }
+    if (selectedanode==false) {
+        cout<<"Error -- didn't select a node for a break"<<endl<<endl;
+    }
+	
+	if (resolution==1) {
+		NodeToBreak=SelectedEdgeTipwardNode->GetChild();
+	}
+	else {
+		NodeToBreak=(SelectedEdgeTipwardNode->GetChild())->GetSibling();
+	}
+	NodePtr NodeToAdd;
+	if((SelectedEdgeTipwardNode->GetAnc()->GetChild())==SelectedEdgeTipwardNode) {
+		NodeToAdd=(SelectedEdgeTipwardNode->GetAnc()->GetChild())->GetSibling();
+	}
+	else {
+		NodeToAdd=(SelectedEdgeTipwardNode->GetAnc()->GetChild());
+	}
+	if( (SelectedEdgeTipwardNode->GetDegree() > 2) || ((SelectedEdgeTipwardNode->GetAnc())->GetDegree() > 2) ) {
+		cout<<"Error: this edge has a multifurcation at at least one end";
+		DeleteSubtendingEdge(NodeToBreak); // just to break the tree
+	}
+	else if (NodeToBreak == NULL || NodeToAdd == NULL) {
+		cout<<"Error: NodeToBreak "<<NodeToBreak<<" or NodeToAdd "<<NodeToAdd<<" is NULL"<<endl;
+		ReportTreeHealth();
+	}
+	else {
+		DeleteSubtendingEdge(NodeToBreak);
+		NodePtr NewPosition=AddNodeToSubtendingEdge(NodeToAdd);
+		(NewPosition->GetChild())->SetSibling(NodeToBreak); //We know NewPosition has one child with no siblings as a result of how we created New Position
+		NodeToBreak->SetAnc(NewPosition);
+		NewPosition->IncrementDegree();
+		FindAndSetRoot();
+		Update();	
+	}
+}
+
 void ContainingTree::SPR () {
     //First, select a node to break under
     //cout<<endl<<"Now starting SPR"<<endl;
@@ -471,7 +540,7 @@ void ContainingTree::SPR () {
             }
             else {
                 chosennodenumber++; //Don't want to split on the root node
-                                    //  cout<<"Chosen node was root; choosing next instead"<<endl;
+				//  cout<<"Chosen node was root; choosing next instead"<<endl;
             }
         }
         currentnode = n.next();
@@ -479,7 +548,7 @@ void ContainingTree::SPR () {
     if (selectedanode==false) {
         cout<<"Error -- didn't select a node for a break"<<endl<<endl;
     }
-
+	
     //cout<<"NodeToBreak = "<<NodeToBreak<<" "<<NodeToBreak->GetLabel()<<endl;
     //Tree SubtreeCopy;
     //SubtreeCopy.SetRoot(CopyOfSubtree(NodeToBreak));
@@ -487,9 +556,9 @@ void ContainingTree::SPR () {
     //cout<<"Subtree: "<<endl;
     //SubtreeCopy.Draw(cout);
     //cout<<endl<<endl;
-
+	
     DeleteSubtendingEdge(NodeToBreak);
-
+	
     //Draw(cout);
     //int numberremainingnodes=GetNumNodes()-TraverseToGetNodeCount(NodeToBreak);
     int numberremainingnodes=GetNumNodes();
@@ -506,7 +575,7 @@ void ContainingTree::SPR () {
         //cout<<chosennodenumberforinsertion<<"\t"<<NodesTouched<<"\t"<<GetNumNodes()<<"\t"<<numberremainingnodes<<"\t"<<TraverseToGetNodeCount(NodeToBreak)<<endl;
         //cout<<"Now examining "<<currentnodeforinsertion<<" "<<currentnodeforinsertion->GetLabel()<<endl;
         if (chosennodenumberforinsertion==NodesTouched) { // We've found the node to split on
-                                                          //if (currentnode!=Root) {
+			//if (currentnode!=Root) {
             NodeToAdd=currentnodeforinsertion;
             //      selectedanode=true;
             break;
@@ -516,7 +585,7 @@ void ContainingTree::SPR () {
             //     cout<<"Chosen node was root; choosing next instead"<<endl;
             //  }
         }
-
+		
         currentnodeforinsertion = m.next();
     }
     //if (selectedanode==false) {
@@ -524,7 +593,7 @@ void ContainingTree::SPR () {
     // }
     // cout<<"NodeToAdd = "<<NodeToAdd<<" "<<NodeToAdd->GetLabel()<<endl;
     //  cout<<"\nDraw Line 209\n";
-
+	
     //    Draw(cout);
     NodePtr NewPosition=AddNodeToSubtendingEdge(NodeToAdd);
     //cout<<"\nDraw Line 212\n";
@@ -542,8 +611,8 @@ void ContainingTree::TBR () {
 }
 
 vector<int> ContainingTree::SplitLeaf (int LeafToSplit) {
-   // cout<<"\nStarting tree for split leaf"<<endl;
-   // ReportTreeHealth();
+	// cout<<"\nStarting tree for split leaf"<<endl;
+	// ReportTreeHealth();
     vector<int> output(2,0);
     int startingnumberofleaves=GetNumLeaves();
     output[0]=LeafToSplit;
@@ -581,8 +650,8 @@ vector<int> ContainingTree::SplitLeaf (int LeafToSplit) {
         CurNode=SelectedLeafPtr;
     }
     else {
-       // ReportTreeHealth();
-       // cout<<endl;
+		// ReportTreeHealth();
+		// cout<<endl;
         NodePtr Ancestor = SelectedLeafPtr->GetAnc();
         if (SelectedLeafPtr->IsTheChild())
         {
@@ -598,7 +667,7 @@ vector<int> ContainingTree::SplitLeaf (int LeafToSplit) {
         SelectedLeafPtr->SetAnc (NULL); //So we've deleted the node that speciates
         Ancestor->SetDegree (Ancestor->GetDegree() - 1);
         CurNode=Ancestor->GetChild();
-       // ReportTreeHealth();
+		// ReportTreeHealth();
         MakeSibling(); //We replace the leaf that we've just deleted with an internal node (that's sister to its ancestor's daughter).
     }
     nxsstring NewLeaf1="taxon";
@@ -607,12 +676,12 @@ vector<int> ContainingTree::SplitLeaf (int LeafToSplit) {
     NewLeaf2+=startingnumberofleaves+1;
     AddCherry(NewLeaf1,NewLeaf2);
     output[1]=startingnumberofleaves+1;
-  //  cout<<"\nInitial health"<<endl;
- //   ReportTreeHealth();
+	//  cout<<"\nInitial health"<<endl;
+	//   ReportTreeHealth();
     Update();
     SetLeafNumbers();
-   // cout<<"\nFinal health"<<endl;
-   // ReportTreeHealth();
+	// cout<<"\nFinal health"<<endl;
+	// ReportTreeHealth();
     return output;
 }
 
@@ -681,7 +750,7 @@ void  ContainingTree::DeleteSubtendingEdge(NodePtr SelectedNode) {
 
 void ContainingTree::TestRerooting()
 {
-
+	
     cout<<"Original Tree"<<endl;
     NodeIterator <Node> m (GetRoot());
     NodePtr currentnodem = m.begin();
@@ -691,11 +760,11 @@ void ContainingTree::TestRerooting()
         currentcount++;
         nxsstring newlabel="";
         newlabel+=currentcount;
-
+		
         currentnodem->SetLabel(newlabel);
         currentnodem = m.next();
     }
-
+	
     Draw(cout);
     cout<<endl;
     //   Write(cout);
@@ -717,7 +786,7 @@ void ContainingTree::TestRerooting()
     NodePtr currentnode = n.begin();
     while (currentnode)
     {
-
+		
         NodesTouched++;
         if (NodesTouched==7) {
             NodePtr NewRoot= ReRootTree(currentnode);
@@ -737,19 +806,19 @@ NodePtr ContainingTree::ReRootTree(NodePtr SelectedNode)
     NodePtr ThisNode;
     // cout<<"OldRoot ="<<OldRoot->GetLabel()<<endl;
     //  cout<<"SelectedNode = "<<SelectedNode->GetLabel()<<endl;
-
+	
     //Need to change things on path between new root and old root, change sibling of selectednode if it has one, change thing whose sibling is selected node if it exists, and delete old root node
     NodePtr NewRoot=AddNodeToSubtendingEdge(SelectedNode); //adds a degree 2 node below the selected node
-                                                           //nxsstring Newlabel="NEWROOT";
-                                                           //NewRoot->SetLabel(Newlabel);
-                                                           //  cout<<"NewRoot = "<<NewRoot->GetLabel()<<endl;
-   // NodePtr TempNewNode=NewNode();
-   // TempNewNode->SetAnc(NewRoot);
-  //  (NewRoot->GetChild())->SetSibling(TempNewNode);
-   // TempNewNode->SetLeaf(true);
-   // TempNewNode->SetLabel("newrootpos");
-   // Update();
-   // Draw(cout);
+	//nxsstring Newlabel="NEWROOT";
+	//NewRoot->SetLabel(Newlabel);
+	//  cout<<"NewRoot = "<<NewRoot->GetLabel()<<endl;
+	// NodePtr TempNewNode=NewNode();
+	// TempNewNode->SetAnc(NewRoot);
+	//  (NewRoot->GetChild())->SetSibling(TempNewNode);
+	// TempNewNode->SetLeaf(true);
+	// TempNewNode->SetLabel("newrootpos");
+	// Update();
+	// Draw(cout);
     (NewRoot->GetChild())->SetSibling(NewRoot->GetAnc());
     NodePtr TaxonToMakeSibNULLLater=Root->GetChild();
     vector<NodePtr> PathToOldRoot;
@@ -805,12 +874,12 @@ NodePtr ContainingTree::ReRootTree(NodePtr SelectedNode)
     //Draw(cout);
     FindAndSetRoot();
     Update();
-
+	
     GetNodeDepths();
     //Draw(cout);
     // ReportTreeHealth();
     return NewRoot;
-
+	
 }
 
 NodePtr ContainingTree::AddNodeToSubtendingEdge(NodePtr NodeWhereAttach) {
@@ -878,15 +947,15 @@ void ContainingTree::SuppressInternalNodesWithOneDescendant()
         if ((currentnode->GetDegree()==1))
         {
             NodesToDelete.push_back(currentnode);
-           // cout<<" <----Want to delete "<<currentnode<<" "<<currentnode->GetLabel();
+			// cout<<" <----Want to delete "<<currentnode<<" "<<currentnode->GetLabel();
         }
-       // cout<<endl;
+		// cout<<endl;
         currentnode = n.next();
     }
     while (!NodesToDelete.empty()) {
         SelectedNode=NodesToDelete.back(); //Pulls a node to delete
         NodesToDelete.pop_back(); //And deletes it from the stack
-                                  //cout<<"Now deleting node "<<SelectedNode<<" within Suppression setp"<<endl;
+		//cout<<"Now deleting node "<<SelectedNode<<" within Suppression setp"<<endl;
         if (SelectedNode!=NULL) {
             SuppressInternalNode(SelectedNode);
         }
@@ -901,14 +970,35 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
     //cout<<"\nSelectedNode is "<<SelectedNode<<endl;
     //cout<<"Now in SuppressInternalNode"<<endl;
     assert(!(SelectedNode->IsLeaf()));
-
+	
     NodePtr AncestralNode = SelectedNode->GetAnc();
     if (AncestralNode!=NULL) {
         NodePtr DescendantNode = SelectedNode->GetChild();
         if (AncestralNode->GetChild()==SelectedNode) { //Selected Node is a child
             AncestralNode->SetChild(DescendantNode);
             DescendantNode->SetAnc(AncestralNode);
-            DescendantNode->SetSibling(SelectedNode->GetSibling());
+			NodePtr SibNode=DescendantNode->GetSibling();
+			if (SibNode==NULL) { //covers case where we're suppressing a node with one descendant, so the descendant has no sibs
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				if((SibNode->GetSibling())==NULL) {
+					SibNode->SetSibling(SelectedNode->GetSibling());
+					break;
+				}
+				SibNode=SibNode->GetSibling();
+			}
+/*			if ((SelectedNode->GetSibling())!=NULL) {
+				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
+				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}			
+			NodePtr SibNode=DescendantNode->GetSibling();
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				SibNode=SibNode->GetSibling();
+			} */
             SelectedNode->SetSibling(NULL);
             SelectedNode->SetAnc(NULL);
         }
@@ -918,10 +1008,34 @@ void ContainingTree::SuppressInternalNode(NodePtr SelectedNode)
                 LinkingNode=LinkingNode->GetSibling();
 			}
             LinkingNode->SetSibling(DescendantNode); //So, move the sibiling link over one (even if it's null)
+			
             DescendantNode->SetAnc(AncestralNode);
-            DescendantNode->SetSibling(SelectedNode->GetSibling());
+			NodePtr SibNode=DescendantNode->GetSibling();
+			if (SibNode==NULL) { //covers case where we're suppressing a node with one descendant, so the descendant has no sibs
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}			
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				if((SibNode->GetSibling())==NULL) {
+					SibNode->SetSibling(SelectedNode->GetSibling());
+					break;
+				}
+				SibNode=SibNode->GetSibling();
+			}
+			
+		/*	if ((SelectedNode->GetSibling())!=NULL) {
+				(SelectedNode->GetSibling())->SetAnc(AncestralNode);
+				(SelectedNode->GetSibling())->SetSibling(DescendantNode->GetSibling());
+				DescendantNode->SetSibling(SelectedNode->GetSibling());
+			}			
+			NodePtr SibNode=DescendantNode->GetSibling();
+			while (SibNode!=NULL) {
+				SibNode->SetAnc(AncestralNode);
+				SibNode=SibNode->GetSibling();
+			} */
             SelectedNode->SetSibling(NULL);
             SelectedNode->SetAnc(NULL);
+			SelectedNode->SetChild(NULL);
         }
         delete SelectedNode;
         FindAndSetRoot();
@@ -977,7 +1091,7 @@ void ContainingTree::UpdateCherries()
                             if (!(sibnode->IsLeaf())) {
                                 IsCherry=false;
                             }
-
+							
                         }
                     }
                     else {
@@ -1010,7 +1124,7 @@ void ContainingTree::FindAndSetRoot()
 
 vector<ContainingTree> ContainingTree::SplitOnTaxon (vector<nxsstring> taxatoexclude)
 {
-
+	
     //ignore the following comment -- since we now assume rooted gene trees, don't have to reroot
     //So, we want to split whereever there's a connection between a subtree consisting only of the chosen taxa and a subtree consisting only of the excluded taxa. problem is rooting: what if tree were ((C1(C2(C3(E1(E2(C4(C5))))))),C6), with the root between C6 and the rest of the tree? We want ((C1,C2),C3) and ((C6,C5),C4), rooted on the node that connects each subtree to the rest of the tree. Solution: first reroot somewhere between the E taxa.
     vector<ContainingTree> SplitTreeVector;
@@ -1041,7 +1155,7 @@ vector<ContainingTree> ContainingTree::SplitOnTaxon (vector<nxsstring> taxatoexc
         for (int i=0; i<FoundLeafVector.size(); i++) {
             NodePtr FoundLeaf=FoundLeafVector[i];
             while ((FoundLeaf!=NULL) && ((FoundLeaf->IsMarked())==false)) { //if it's already marked, all its descendants will be, too
-                                                                            // cout<<"Now examining "<<FoundLeaf<<" "<<FoundLeaf->GetLabel();
+				// cout<<"Now examining "<<FoundLeaf<<" "<<FoundLeaf->GetLabel();
                 FoundLeaf->SetMarked(true);
                 FoundLeaf=FoundLeaf->GetAnc();
                 // cout<<" moving on to "<<FoundLeaf<<endl;
@@ -1179,7 +1293,7 @@ vector<int> ContainingTree::GetLCADepthVector(nxsstring a, nxsstring b, nxsstrin
         depth[q] = count++;
         q = n.next();
     }
-
+	
     //Now get depths for each pair
     vector<int> LCADepthVector;
     //MakeNodeList(); //Note: you must call MakeNodeList before using this
@@ -1193,7 +1307,7 @@ int ContainingTree::LCADepthQuery(nxsstring a, nxsstring b) {
     //make sure you've called MakeNodeList before using this
     NodePtr p = GetLeafWithLabel(a);
     NodePtr q = GetLeafWithLabel(b);
-  //  cout<<"Comparing "<<p->GetLabel()<<" and "<<q->GetLabel();
+	//  cout<<"Comparing "<<p->GetLabel()<<" and "<<q->GetLabel();
     while (depth[p] != depth[q])
     {
         if (depth[p] < depth[q])
@@ -1201,7 +1315,7 @@ int ContainingTree::LCADepthQuery(nxsstring a, nxsstring b) {
         else
             p = p->GetAnc();
     }
- //   cout<<" depth is "<<depth[p]<<endl;
+	//   cout<<" depth is "<<depth[p]<<endl;
     return depth[p];
 }
 
@@ -1229,10 +1343,10 @@ NodePtr ContainingTree::GetLeafWithNumber (int i)
             //  cout<<endl;
             currentnode = n.next();
         }
-
+		
     }
     // cout<<" finally "<<result<<endl;
-
+	
     return result;
 }
 
@@ -1295,4 +1409,245 @@ void ContainingTree::ClearInternalLabels()
         }
         currentnode = n.next();
     }
+}
+
+void ContainingTree::InitializeMissingBranchLengths()
+{
+	FindAndSetRoot();
+	Update();
+	GetNodeDepths();
+	//cout<<"InitializeMissingBranchLengths"<<endl;
+	//ReportTreeHealth();
+	SetEdgeLengths(true);
+	MarkNodes(false); //We'll mark the nodes below which the branch lengths have been changed
+	getPathLengths(Root); //make sure we store the path lengths
+	GetNodeDepths(); //heights above root
+	float maxpathlength = GetMaxPathLength();
+	if (maxpathlength==0) { //there are no path lengths stored; initialize tree with all brlen = 1
+		NodeIterator <Node> n (GetRoot());
+		NodePtr currentnode = n.begin();
+		while (currentnode)
+		{
+			if (currentnode!=Root) {
+				currentnode->SetEdgeLength(1.0*currentnode->GetDepth() - 1.0*(currentnode->GetAnc())->GetDepth());
+				//cout<<endl<<currentnode<<" "<<currentnode->GetEdgeLength();
+			}
+			/*			if (((currentnode->GetEdgeLength())==0) || ((currentnode->GetEdgeLength())!=(currentnode->GetEdgeLength())) || gsl_isnan(currentnode->GetEdgeLength()) || gsl_isinf(currentnode->GetEdgeLength())) { //test for ==0 or ==nan
+			 double totalbrlen=0;
+			 double countofbranches=0;
+			 if (currentnode->GetAnc()!=NULL) {
+			 if ((((currentnode->GetAnc())->GetEdgeLength())==0) || (((currentnode->GetAnc())->GetEdgeLength())!=((currentnode->GetAnc())->GetEdgeLength())) || gsl_isnan((currentnode->GetAnc())->GetEdgeLength()) || gsl_isinf((currentnode->GetAnc())->GetEdgeLength())) {
+			 }
+			 else {
+			 totalbrlen+=(currentnode->GetAnc())->GetEdgeLength();
+			 countofbranches++;
+			 }
+			 }
+			 if (currentnode->GetSibling()!=NULL) {
+			 if ((((currentnode->GetSibling())->GetEdgeLength())==0) || (((currentnode->GetSibling())->GetEdgeLength())!=((currentnode->GetSibling())->GetEdgeLength())) || gsl_isnan((currentnode->GetSibling())->GetEdgeLength()) || gsl_isinf((currentnode->GetSibling())->GetEdgeLength())) {
+			 }
+			 else {
+			 totalbrlen+=(currentnode->GetSibling())->GetEdgeLength();
+			 countofbranches++;
+			 }
+			 }
+			 if (currentnode->GetChild()!=NULL) {
+			 if ((((currentnode->GetChild())->GetEdgeLength())==0) || (((currentnode->GetChild())->GetEdgeLength())!=((currentnode->GetChild())->GetEdgeLength())) || gsl_isnan((currentnode->GetChild())->GetEdgeLength()) || gsl_isinf((currentnode->GetChild())->GetEdgeLength())) {
+			 }
+			 else {
+			 totalbrlen+=(currentnode->GetChild())->GetEdgeLength();
+			 countofbranches++;
+			 }
+			 }
+			 double newlength=1.0;
+			 if (countofbranches>0) {
+			 newlength=totalbrlen/countofbranches; //assume missing brlen similar to that of neighbors
+			 }
+			 currentnode->SetEdgeLength(newlength); */
+			currentnode = n.next();
+		}
+		
+	}
+	
+	else { //we have to be more clever
+		PreorderIterator <Node> n (GetRoot());
+		NodePtr currentnode = n.begin();
+		while (currentnode)
+		{
+			if (currentnode==GetRoot()) {
+				currentnode->SetEdgeLength(0);
+				getPathLengths(currentnode);
+			}
+			else if (((currentnode->GetEdgeLength())==0)) {
+				float pathlength = currentnode->GetPathLength();
+				if (currentnode->IsLeaf()) { //is a leaf; we've done its ancestors
+					currentnode->SetEdgeLength(maxpathlength-pathlength);
+					currentnode->SetMarked(true);
+					getPathLengths(currentnode);
+				}
+				else {
+					currentnode->SetEdgeLength(0.5*(maxpathlength-pathlength));
+					currentnode->SetMarked(true);
+					getPathLengths(currentnode);
+				}
+			}
+			currentnode = n.next();
+		}
+		
+		
+	}
+}
+	
+void ContainingTree::RandomlyModifySingleBranchLength(double markedmultiplier, double brlensigma)
+{
+	FindAndSetRoot();
+	Update();
+	GetNodeDepths();	
+	SetEdgeLengths(true);
+	//cout<<"RandomlyModifySingleBranchLength"<<endl;
+	//ReportTreeHealth();
+	int numberofunmarkednodes=-2+(2*GetNumLeaves());
+	int numberofmarkednodes=0;
+	NodeIterator <Node> n (GetRoot());
+	NodePtr currentnode = n.begin();
+	//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
+	while (currentnode)
+	{
+		if (currentnode->IsMarked()) {
+			numberofunmarkednodes--;
+			numberofmarkednodes++;
+			//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
+		}
+		currentnode = n.next();
+	}
+	double probabilityperunmarked=1.0/(numberofunmarkednodes+markedmultiplier*numberofmarkednodes);
+	bool changedbrlen=false;
+	while (!changedbrlen) {
+		currentnode = n.begin();
+		while (currentnode)
+		{
+			double thresholdprobability=probabilityperunmarked;
+			if (currentnode->IsMarked()) {
+				thresholdprobability*=markedmultiplier;
+			}
+			double testvalue=gsl_ran_flat (r,0,1);
+			//cout<<"Testvalue = "<<testvalue<<" thresholdprobability = "<<thresholdprobability<<endl;
+			if (testvalue<thresholdprobability) { //adjust brlen
+				//currentnode->SetEdgeLength(gsl_ran_lognormal(r,currentnode->GetEdgeLength(),brlensigma)); //Original brlen moving, but resulted in too high values
+				//use gamma distribution
+				//with gamma, mean = a * b and var = a * b * b
+				//we want mean = currentnode->GetEdgeLength() and var = brlensigma^2
+				//so solve for best values of a and b
+				double a=(currentnode->GetEdgeLength())*(currentnode->GetEdgeLength())/(brlensigma*brlensigma); //a = x^2/ var
+				double b=(brlensigma*brlensigma)/(currentnode->GetEdgeLength()); //b = var / x
+				currentnode->SetEdgeLength(gsl_ran_gamma(r,a,b));
+				changedbrlen=true;
+				//cout<<"Should break here"<<endl;
+				break;
+			}
+			currentnode = n.next();
+		}
+		
+	}
+	//cout<<"Done adjusting"<<endl;
+}
+
+void ContainingTree::NodeSlideBranchLength(double markedmultiplier)
+{
+	//Find an internal, nonroot node, and move it up or down, adjusting length of its two child edges, too
+	FindAndSetRoot();
+	Update();
+	GetNodeDepths();	
+	SetEdgeLengths(true);
+	if (GetNumLeaves()>2) { //so there are internal nodes to move
+		//cout<<"RandomlyModifySingleBranchLength"<<endl;
+		//ReportTreeHealth();
+		int numberofunmarkednodes=GetNumLeaves()-2; //number of internal nodes
+		int numberofmarkednodes=0;
+		NodeIterator <Node> n (GetRoot());
+		NodePtr currentnode = n.begin();
+		//cout<<"numberofunmarkednodes = "<<numberofunmarkednodes<<" numberofmarkednodes = "<<numberofmarkednodes<<endl;
+		while (currentnode)
+		{
+			if (currentnode->IsMarked()) {
+				if (!(currentnode->IsLeaf()) && currentnode!=GetRoot()) {
+					numberofunmarkednodes--;
+					numberofmarkednodes++;
+				}
+			}
+			currentnode = n.next();
+		}
+		double probabilityperunmarked=1.0/(numberofunmarkednodes+markedmultiplier*numberofmarkednodes);
+		bool changedbrlen=false;
+		while (!changedbrlen) {
+			currentnode = n.begin();
+			while (currentnode)
+			{
+				if (!(currentnode->IsLeaf()) && currentnode!=GetRoot()) {
+					double thresholdprobability=probabilityperunmarked;
+					if (currentnode->IsMarked()) {
+						thresholdprobability*=markedmultiplier;
+					}
+					double testvalue=gsl_ran_flat (r,0,1);
+					//cout<<"Testvalue = "<<testvalue<<" thresholdprobability = "<<thresholdprobability<<endl;
+					if (testvalue<thresholdprobability) { //adjust brlen
+						double belowedgelength=currentnode->GetEdgeLength();
+						
+						double aboveedgelength=0.9*belowedgelength;
+						if ((currentnode->GetSibling())!=NULL) { //has sibling
+							aboveedgelength=(currentnode->GetSibling())->GetEdgeLength();
+						}
+						else { //is the rightmost sibling, so get its left sib
+							aboveedgelength=((currentnode->GetAnc())->GetChild())->GetEdgeLength();
+						}
+						double movedistance=gsl_ran_flat(r,-0.5*(GSL_MIN(belowedgelength,aboveedgelength)),0.5*(GSL_MIN(belowedgelength,aboveedgelength)));
+						currentnode->SetEdgeLength(belowedgelength-movedistance);
+						NodePtr nextnode=currentnode->GetChild();
+						while (nextnode!=NULL) {
+							nextnode->SetEdgeLength(aboveedgelength+movedistance);
+							nextnode=nextnode->GetSibling(); //so, doesn't assume binary tree
+						}
+						changedbrlen=true;
+						//cout<<"Should break here"<<endl;
+						break;
+					}
+				}
+				currentnode = n.next();
+			}
+			
+		}
+	}
+	//cout<<"Done adjusting"<<endl;
+	else {
+		cout<<"Warning: attempting a move where there are no internal nodes (besides the root)"<<endl;
+	}
+}
+
+void ContainingTree::ModifyTotalBranchLength(double brlensigma)
+{
+	FindAndSetRoot();
+	Update();
+	GetNodeDepths();	
+	SetEdgeLengths(true);
+	double roottotipheight=0;
+	NodePtr currentnode=GetRoot();
+	while (currentnode!=NULL) {
+		roottotipheight+=currentnode->GetEdgeLength();
+		currentnode=currentnode->GetChild();
+	}
+	//use gamma distribution
+	//with gamma, mean = a * b and var = a * b * b
+	double a=(roottotipheight)*(roottotipheight)/(brlensigma*brlensigma); //a = x^2/ var
+	double b=(brlensigma*brlensigma)/(roottotipheight); //b = var / x
+	double multiplier=(gsl_ran_gamma(r,a,b))/roottotipheight; //we'll scale whole tree
+	
+	NodeIterator <Node> n (GetRoot());
+	currentnode = n.begin();
+	currentnode = n.begin();
+	while (currentnode)
+	{
+		currentnode->SetEdgeLength((currentnode->GetEdgeLength())*multiplier);
+		currentnode = n.next();
+	}
+	//cout<<"Done adjusting"<<endl;
 }

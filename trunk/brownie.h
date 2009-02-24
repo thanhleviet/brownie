@@ -2,7 +2,7 @@
 #ifndef __BROWNIE_H
 #define __BROWNIE_H
 
-#define COMMAND_MAXLEN  255
+#define COMMAND_MAXLEN  10000// used to be 255
 #define PI 3.141592653589793238462643383279502884197169399375
 #define maxModelCategoryStates         10
 #include <gsl/gsl_math.h>
@@ -11,6 +11,7 @@
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include "containingtree.h"
+#include "charactersblock2.h"
 
 
 
@@ -25,6 +26,7 @@ public:
     bool logf_open;
     bool echof_open;
     bool quit_now;
+	bool quit_onerr;
     ofstream logf;
     ofstream echof;
     ofstream exportf;
@@ -38,6 +40,7 @@ public:
     int maxnumspecies;
     int minnumspecies;
 	int minsamplesperspecies;
+	int maxstartstops;
 	int rearrlimit;
     bool steepest;
 	bool exhaustive;
@@ -47,13 +50,44 @@ public:
     TaxaBlock* taxa;
     AssumptionsBlock* assumptions;
     CharactersBlock* characters;
+	CharactersBlock2* characters2;
+	CharactersBlock* discretecharacters;
+	CharactersBlock* continuouscharacters;
     int chosentree;
     int chosenchar;
+	int discretechosenchar;
+	int numberoffreeparameters;
+	int numberoffreerates;
+	int numberoffreefreqs;
+	vector<double> ratematfixedvector; 
+	vector<int> ratematassignvector; 
+	vector<double> userstatefreqvector;
+	string freerateletterstring;
+	nxsstring usermatrix;
+	int negbounceparam; //equals -1, or the index of the parameter to have a negative (and therefore out of bounds) value
+	bool nonnegvariables;
+	gsl_matrix *optimaldiscretecharQmatrix;
+	gsl_vector *optimaldiscretecharstatefreq;
+	gsl_matrix *currentdiscretecharQmatrix;
+	gsl_vector *currentdiscretecharstatefreq;	
+	int discretechosenmodel;
+/*	double E_discretegeneral(void *xp);
+	double M_discretegeneral(void *xp, void *yp);
+	void S_discretegeneral(const gsl_rng * r, void *xp, double step_size);*/
+	int discretechosenstatefreqmodel;
+	int numbercharstates;
+	int localnumbercharstates;
+	bool allchar;
+	bool globalstates;
+	bool variablecharonly;
+	double bestdiscretelikelihood;
+	int optimizationalgorithm;
     bool matrixsingular;
     bool debugmode;
     double structwt;
 	bool triplettoohigh;
 	bool gtptoohigh;
+	bool infinitescore;
 	double tripletdistthreshold;
     double pthreshold;
 	double chosensubsampling;
@@ -63,11 +97,25 @@ public:
     double stoppingprecision;
     int randomstarts;
 	nxsstring treefilename;
+	bool useCOAL;
+	bool useMS;
+	int msbasereps;
+	int contourBrlenToExport;
+	int contourMaxRecursions;
+	double contourstartingnumbersteps;
+	double contourstartingwidth;
+	bool exportalltrees;
+	int COALaicmode;
+	double markedmultiplier;
+	double brlensigma;
+	int numbrlenadjustments;
 	map< vector<int>, int> quartetcounts;
 	map< vector<int>, int> qualifiedquartets;
 	vector<int> quartetspertaxon;
     double stepsize;
     bool detailedoutput;
+	bool redobad;
+	int giveupfactor;
     bool citationarray[20];
     vector<int> convertsamplestospecies; //Indexed by sample number, each entry is the species to which it's assigned
 	vector<int> jackknifevector;
@@ -82,6 +130,11 @@ public:
     vector<double> timeslicetimes;
     vector<int> timeslicemodels;
     int chosenmodel;
+	gsl_vector *optimalvaluescontinuouschar; //first values are parameters; last is lnL
+	gsl_matrix *optimalVCV;
+	//vector<nxsstring> optimalvalueslabels;
+	gsl_vector *optimalTraitMeans;
+	nxsstring globalchosentaxset;
     map<nxsstring, IntSet> MrcaMap;
     Profile<Tree> intrees;
     int tipvariancetype;
@@ -105,6 +158,9 @@ public:
     bool showtries;
     vector<ContainingTree> RawBestTrees; //Contains all the best trees with just species labels; cleared every time a better tree is found
     vector<ContainingTree> FormattedBestTrees; //Uses samples as labels. Is useful as this way you don't have to remember the convertsamplestospecies for each best tree
+	vector<nxsstring> ContourSearchDescription; //Stores a tree description and tab-delimited file with branch lengths and likelihood scores
+	vector<vector <double> > ContourSearchVector;
+	vector<ContainingTree> BestBranchlengthTreeForThisNextTree; //For optimizing branch lengths
     double bestscore;
 	double bestscorelocal;
         //We use a struct so we can pass one set of params (a VCV matrix and two vectors) to a multimin function
@@ -132,7 +188,7 @@ public:
 
 public:
         map<string, double> SimulateBrownian(double trend,double rate,double rootstate);
-
+	double browniesafe_gsl_sf_exp(double x);
     void PreOrderTraversal( NexusToken& token);
     double GetTripletScore(ContainingTree *SpeciesTreePtr);
 	void GetTaxonTaxonTripletDistances();
@@ -140,6 +196,8 @@ public:
 	void DelDupes();
 	void HandleAccuracy( NexusToken& token );
 	void ComputeAccuracy();
+	void HandlePartitionedEdgeSupport ( NexusToken& token);
+	void BatchPartitionedEdgeSupport (int numberofpartitions);
         double ComputeTripletCost(int numberdisagree,int maxnumber,int ntaxincommon,double Tree1Wt,int Tree1Ntax,double Tree2Wt,int Tree2Ntax, int numberofgenes);
     void HandleExport ( NexusToken& token );
     void ProgressBar(int total);
@@ -154,35 +212,48 @@ public:
     void HandleEndblock( NexusToken& token );
     void HandleBlocks( NexusToken& token );
     void HandleDebug( NexusToken& token );
+	void HandleNoQuitOnErr( NexusToken& token );
+	double AIC(double neglnL, int K);
+	double AICc(double neglnL, int K, int N);
     void HandleDebugOptimization (NexusToken & token);
     void HandleHelp( NexusToken& token );
     void HandleLog( NexusToken& token );
     void HandleEcho( NexusToken& token );
     void HandleRateTest( NexusToken& token);
+	void HandleOrderByTree( NexusToken& token);
     void HandleExecute( NexusToken& token );
     void HandleChoose( NexusToken& token );
     void HandleSet( NexusToken& token );
     void HandleModel( NexusToken& token );
 	void HandleDiscrete( NexusToken& token );
+	void HandleSimulateCharacters( NexusToken& token);
+	void SimulateCharacters(int n, int chartype, nxsstring outputfilename, bool treeloop);
 	void HandleLoss( NexusToken& token );
 	void FindFixedDiscreteModel();
     void NumOpt( NexusToken& token);
 	void DoExhaustiveSearch();
     void DoHeuristicSearch();
+	void HandleDettmanCollapse( NexusToken& token );
+	void DoDettmanCollapse();
     void HandleHeuristicSearch( NexusToken& token );
     void HandleShowtree( NexusToken& token );
     void HandleTipValues(NexusToken& token);
     void HandlePrintEdgeLengths(NexusToken& token);
     void HandleVCV(NexusToken& token);
-	virtual double CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector, bool returnancstates);
+	virtual double CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector);
+	virtual double CalculateDiscreteCharProbAllConstant(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector);
+	virtual NodePtr EstimateMLDiscreteCharJointAncestralStates(gsl_matrix * RateMatrix, gsl_vector * ancestralstatevector, int breaksperbranch);
 	virtual double CalculateDiscreteLindy2(double rateA, double rateB);
 	virtual double CalculateDiscreteLindy1(double rateA);
 	static double GetLikelihoodUnderLindy2_gsl( const gsl_vector * variables, void *obj) ;
+	static double GetDiscreteCharLnL_gsl( const gsl_vector * variables, void *obj) ;
+	double GetDiscreteCharLnL(const gsl_vector * variables);
+
 	double GetLikelihoodUnderLindy2(const gsl_vector * variables);
 	static double GetLikelihoodUnderLindy1_gsl( const gsl_vector * variables, void *obj) ;
 	double GetLikelihoodUnderLindy1(const gsl_vector * variables);
 	gsl_vector * LindyGeneralOptimization(int ChosenModel);
-	
+    gsl_vector* DiscreteGeneralOptimization();	
 	gsl_matrix* ComputeTransitionProb(gsl_matrix *RateMatrix, double brlen);
     void HandleTimeSlice( NexusToken& token );
     void HandleTipVariance( NexusToken& token );
@@ -235,8 +306,10 @@ public:
     int TaxonLabelToNumber( nxsstring s );
     gsl_vector* GetTipValues(nxsstring chosentaxset, int charnumber);
     gsl_vector* SimulateTips(gsl_matrix * VCV, double rate, gsl_vector *MeanValues);
+	virtual void GetOptimalVCVAndTraitsContinuous();
     gsl_matrix* GetVCV(nxsstring chosentaxset);
 	void PrintMatrix(gsl_matrix *VCV);
+	void PrintVector(gsl_vector *somevector);
 	gsl_matrix* GetVCVwithKappa(nxsstring chosentaxset,double kappa); //don't forget to use DeleteStem
 	gsl_matrix* ConvertVCVwithDelta(gsl_matrix * VCVorig,double delta); //takes VCV as input; could use DeleteStem(GetVCV(chosentaxset)) as input
 	gsl_matrix* ConvertVCVwithLambda(gsl_matrix * VCVorig,double lambda);//takes VCV as input; could use DeleteStem(GetVCV(chosentaxset)) as input
