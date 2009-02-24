@@ -18,7 +18,8 @@ extern gsl_rng * r;
  *
  */
 
-#define maxATTRACTIONPARAM         40
+#define maxATTRACTIONPARAM         20
+#define minATTRACTIONPARAM         0.001
 
 
 class OptimizationFnMultiModel
@@ -46,6 +47,16 @@ public:
 	
 	double GetLikelihoodOUSM(const gsl_vector * variables);
 	static double GetLikelihoodOUSM_gsl( const gsl_vector * variables, void *obj);
+	
+	double GetLikelihoodOUSM_FixedAttractionRate(const gsl_vector * variables);
+	static double GetLikelihoodOUSM_FixedAttractionRate_gsl( const gsl_vector * variables, void *obj);
+	
+	double GetLikelihoodOUSM_OnlyVariablesAttractionRate(const gsl_vector * variables);
+	static double GetLikelihoodOUSM_OnlyVariablesAttractionRate_gsl( const gsl_vector * variables, void *obj);
+
+	double GetLikelihoodOUSM_AnalyticMeans(const gsl_vector * variables);
+	static double GetLikelihoodOUSM_AnalyticMeans_gsl( const gsl_vector * variables, void *obj);
+
 	
 //	gsl_vector * OptimizeRateWithGivenTipVarianceDiffRateOnChange();
 
@@ -79,6 +90,7 @@ private:
 		gsl_matrix *Matrix9;
 	gsl_vector *Vector1;
 	gsl_vector *Vector2;
+	gsl_vector *fixedparams;
 };
 
 
@@ -192,3 +204,4 @@ public:
 
 
 #endif
+	

@@ -92,6 +92,7 @@ typedef std::map <std::string, int, std::less<std::string> > LabelMap;
  */
 template <class T> class Profile
 {
+	friend class BROWNIE; //Added by BCO
 public:
 	/**
 	 * A map between leaf labels in the profile and a unique integer index
@@ -118,7 +119,8 @@ public:
 	 * @return The tree
 	 */
 	 virtual T GetIthTree (int i) { return Trees[i]; };
-	/**
+
+	 /**
 	 * @brief The name of the ith tree in the profile
 	 *
 	 * @param i the index of the tree in the range 0 - (n-1)

@@ -47,6 +47,9 @@ public:
     
     //Do an NNI move
     virtual void NNI ();
+	
+	//Take a given node and do an NNI
+	void NonRandomNNIAtNode (int chosennodenumber, int resolution);
     
     //Do an SPR move
     virtual void SPR ();
@@ -157,8 +160,14 @@ public:
     virtual NodePtr SelectNodeToReRootOn(int chosennodenum);
 
     virtual void ClearInternalLabels();
+	
+	virtual void InitializeMissingBranchLengths();
 
-
+	virtual void RandomlyModifySingleBranchLength(double markedmultiplier, double brlensigma);
+	
+	virtual void NodeSlideBranchLength(double markedmultiplier);
+	
+	virtual void ModifyTotalBranchLength(double brlensigma);
 };
 
 

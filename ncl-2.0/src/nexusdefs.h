@@ -15,7 +15,7 @@
 // number of characters times the number of taxa. If Brownie
 // is taking too much memory, this number can be reduced. If
 // your matrix is very big, this number can be increased.
-#define NCL_MAX_VALUES         30000
+#define NCL_MAX_VALUES         1000000
 
 
 

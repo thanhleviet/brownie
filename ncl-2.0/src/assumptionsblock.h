@@ -64,6 +64,8 @@ public:
    void      ApplyExSet( nxsstring nm );
 
    void HandleTaxset( NexusToken& token ); //BCO moved this from protected
+   
+   void MakeTaxsetAll(); //Added by BCO
 
 	virtual void Report( std::ostream& out );
 };
