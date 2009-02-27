@@ -6510,11 +6510,11 @@ void BROWNIE::HandleModel( NexusToken& token )
         else if( token.Abbreviation("?") ) {
 			//message="Usage: Model type= [BM | OU | ACDC] assign=[1 | CS | CC | TI | TC] ou=[M | MV]\n";
         //    message="Usage: Model type = [ BM1 | OU1 | ACDC1 | BMS | BMC | BMAN | BMAO | OUSMVA | OUCMVA | OUSMA | OUCMA | OUSM | OUCM | TSBMI |TSBMC]\n\n"; //add this once everything's been tested
-            message="Usage: Model type = [ BM1 | BMS | BMC | OU1 | ... ] states = ( vector )\n";
+            message="Usage: Model type = [ BM1 | BMS | BMC | OUSM | ... ] states = ( vector )\n";
             message+="";
             message+="Available options:\n\n";
             message+="Keyword ---- Option type ------------------------------------------------- Current setting -----";
-            message+="\n Type        BM1 | BMS | BMC | OU1 | ACDC                                  ";
+            message+="\n Type        BM1 | BMS | BMC | OUSM | OUCM                                  ";
 
 		//	message+="\n Type        BM | OU | ACDC                                                           ";
 		//	message+="\n Assign      1 | CS | CC | TI | TC | RBS | RBO                                                    ";
@@ -6583,8 +6583,8 @@ void BROWNIE::HandleModel( NexusToken& token )
 			message+="\n\nBM1     = Brownian motion, one rate parameter";
 			message+="\nBMS     = Brownian motion, with different rate parameters for each state on a tree";
 			message+="\nBMC     = Brownian motion, with one rate parameter for branches with state changes and another for branches without changes";
-			message+="\nOU1     = Blomberg et al. Ornstein-Uhlenbeck (one attraction parameter (d), one mean)";
-			message+="\nACDC    = Blomberg et al. Acceleration/Deceleration (g parameter)";
+			//message+="\nOU1     = Blomberg et al. Ornstein-Uhlenbeck (one attraction parameter (d), one mean)";
+			//message+="\nACDC    = Blomberg et al. Acceleration/Deceleration (g parameter)";
 			message+="\nOUSM    = Ornstein-Uhlenbeck with one mean per discrete state (attraction and rate parameters constant across tree)";
 			message+="\nOUCM    = Ornstein-Uhlenbeck with independent means on branches with and without changes in a discrete character";
 			message+="\n         (attraction and rate parameters constant across tree)";
@@ -11571,7 +11571,7 @@ void BROWNIE::Read( NexusToken& token )
         else if( token.Abbreviation("Quit") ) {
             quit_now = true;
 			PrintCitations();
-            message = "\nPlease remember to send bug reports to brownie@brianomeara.info.\n";
+            message = "\nPlease remember to send bug reports to omeara.brian@gmail.com.\n";
             PrintMessage();
 
             break;
@@ -17080,7 +17080,7 @@ void BROWNIE::HandleTimeSlice( NexusToken& token )
             // message+="\nTaxset       <taxset name>                        *All";
             // message+="\nFromRoot     No|Yes                               *No";
             message+="\n                                                 *Option is nonpersistent\n\n";
-            message+="This will allow assignment of different models on the specified intervals across all trees.\nFor example, to specify one rate parameter for the interval from the present to 50 MYA,\nanother rate parameter from 50 MYA to 65 MYA, and the first rate parameter again from 65 MYA\nto the root of the phylogeny:\n\n  Time Model\n   0     1\n   5     1\n   .     .\n  45     1\n__50_____1_\n| 50     2 |\n| 55     2 |\n| 60     2 |\n|_65_____2_|\n  65     1\n  70     1\n   .     .\n\none would type\n\nTimeslice splits=(50 65) models=(1 2 1);\n\nSplits specifies where one model changes to the other;\nthere should be one fewer split than there are intervals.\nEdges spanning a split are properly divided\n(so a given path may have more than one model).\n\nBy default, times are measured from the most recent taxon. \nTo specify that they should be measured from the root instead, specify fromroot=yes [NOT IMPLEMENTED YET];\nThis becomes most important when the root node may be of different depths in different trees.\nNote that you are currently limited to only 9 splits (if this becomes a problem, email brownie@brianomeara.info).\nDoing this command will overwrite any previous splits or discrete character mappings.";
+            message+="This will allow assignment of different models on the specified intervals across all trees.\nFor example, to specify one rate parameter for the interval from the present to 50 MYA,\nanother rate parameter from 50 MYA to 65 MYA, and the first rate parameter again from 65 MYA\nto the root of the phylogeny:\n\n  Time Model\n   0     1\n   5     1\n   .     .\n  45     1\n__50_____1_\n| 50     2 |\n| 55     2 |\n| 60     2 |\n|_65_____2_|\n  65     1\n  70     1\n   .     .\n\none would type\n\nTimeslice splits=(50 65) models=(1 2 1);\n\nSplits specifies where one model changes to the other;\nthere should be one fewer split than there are intervals.\nEdges spanning a split are properly divided\n(so a given path may have more than one model).\n\nBy default, times are measured from the most recent taxon. \nTo specify that they should be measured from the root instead, specify fromroot=yes [NOT IMPLEMENTED YET];\nThis becomes most important when the root node may be of different depths in different trees.\nNote that you are currently limited to only 9 splits (if this becomes a problem, email omeara.brian@gmail.com).\nDoing this command will overwrite any previous splits or discrete character mappings.";
             PrintMessage();
         }
         else if( token.Abbreviation("Splits") ) {
