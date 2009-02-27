@@ -1,2 +1,0 @@
-Hash makeTipNameHash(node root);
-
