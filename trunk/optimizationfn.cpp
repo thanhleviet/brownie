@@ -279,7 +279,7 @@ gsl_vector * OptimizationFn::OptimizeRateWithGivenTipVariance()
 	double rate=brownie.EstimateRate(Matrix1,brownie.GetTipResiduals(Vector1,brownie.GetAncestralState(Matrix1,Vector1)));
 	double rateestimates[randomstarts];
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -660,7 +660,7 @@ gsl_vector * OptimizationFn::OptimizeRateWithOptimizedTipVariance()
 {
 	//gsl_vector * inputrate=gsl_vector_calloc(1);
 	//gsl_vector_set(inputrate,0,1);
-	const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+	const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 	gsl_multimin_fminimizer *s = NULL;
 	gsl_vector *ss, *x;
 	size_t np = 2;
@@ -787,7 +787,7 @@ gsl_vector * OptimizationFn::GeneralOptimization(int ChosenModel)
 		brownie.ProgressBar(randomstarts);
 	}
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -1072,7 +1072,7 @@ gsl_vector * OptimizationFnMultiModel::GeneralOptimization(int ChosenModel)
 		brownie.ProgressBar(randomstarts);
 	}
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -1489,7 +1489,7 @@ gsl_vector * OptimizationFnMultiModel::OptimizeRateWithGivenTipVarianceOneRatePe
 	double ratestart=brownie.EstimateRate(CombinedVCV,brownie.GetTipResiduals(Vector1,ancstatestart));
 	gsl_matrix * estimates=gsl_matrix_calloc(randomstarts,np);
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -2160,7 +2160,7 @@ double OptimizationFnMultiModel::GetLikelihoodOUSM_OnlyVariablesAttractionRate(c
 	double startingratemean=brownie.EstimateRate(Matrix0,brownie.GetTipResiduals(Vector1,startingancestralstatemean));
 	double localstepsize=0.001*GSL_MAX(fabs(gsl_vector_max(Vector1)),fabs(gsl_vector_min(Vector1)));
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -2699,7 +2699,7 @@ gsl_vector * LindyFn::GeneralOptimization(int ChosenModel)
 	double startingvalues[randomstarts][np];
 	double likelihoods[randomstarts][1];
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
