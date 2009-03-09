@@ -15381,15 +15381,15 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 			frequencysum+=gsl_vector_get(ancestralstatevector,i);
 		}
 //		if ((fabs(frequencysum-1.0)>DBL_EPSILON) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
-		if ((gsl_fcmp(frequencysum,1.0,DBL_EPSILON/10.0)==0) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
+		if ((gsl_fcmp(frequencysum,1.0,DBL_EPSILON)!=0) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
 			if(detailedoutput) {
 				cout<<"\n\tHad wrong state frequency input, ancestralstatevector vector is ( ";
 				for (int i=0;i<ancestralstatevector->size;i++) {
 					cout<<gsl_vector_get(ancestralstatevector,i)<<" ";
 				}
 				cout<<") ";
-				if (frequencysum!=1.0) {
-					cout<<"[SUM ("<<frequencysum<<") NOT 1: Sum-1 = "<<fabs(frequencysum-1.0)<<"] ";
+				if (gsl_fcmp(frequencysum,1.0,DBL_EPSILON)!=0) {
+					cout<<"[SUM ("<<frequencysum<<") NOT 1: Sum-1 = "<<fabs(frequencysum-1.0)<<", gsl_fcmp(frequencysum,1.0,DBL_EPSILON) = "<<gsl_fcmp(frequencysum,1.0,DBL_EPSILON)<<"] ";
 				}
 				if (gsl_vector_min(ancestralstatevector)<0) {
 					cout<<"[MIN ("<<gsl_vector_min(ancestralstatevector)<<") < 0] ";
@@ -15475,7 +15475,7 @@ gsl_vector * BROWNIE::LindyGeneralOptimization(int ChosenModel)
 	double startingvalues[randomstarts][np];
 	double likelihoods[randomstarts][1];
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -15674,7 +15674,7 @@ gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 		}
 		for (int startnum=0;startnum<randomstarts;startnum++) {
 			if (optimizationalgorithm==1) { //do nelder-mead simplex
-				const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+				const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
 				gsl_multimin_fminimizer *s = NULL;
 				gsl_vector *ss, *x;
 				size_t iter = 0, i;
