@@ -1,0 +1,22 @@
+#nexus
+begin trees;
+tree PAUP_945 = ((AGI,(ST,(GM,(LJ,(MT,OGI))))),PGI); [...the species tree]
+end;
+
+Begin trees;  [...blocks of gene trees] 
+tree PAUP_1 = (((GM,GM),LJ),MT):1.00;
+End;
+#NEXUS 
+
+Begin trees;  
+tree PAUP_1 = (((GM,GM),LJ),(AGI,AGI)):1.00;
+End;
+
+Begin trees; 
+tree PAUP_1 = ((GM,MT),(LJ,MT)):1.00;
+End;
+
+Begin trees;  
+tree PAUP_1 = ((((AGI,AGI),((ST,ST),ST)),(((((LJ,GM),MT),(GM,GM)),LJ),MT)),((OGI,OGI),OGI)):0.50;
+tree PAUP_2 = ((((AGI,AGI),((ST,ST),ST)),(((((LJ,GM),MT),MT),(GM,GM)),LJ)),((OGI,OGI),OGI)):0.50;
+End;
