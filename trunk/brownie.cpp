@@ -15475,7 +15475,7 @@ gsl_vector * BROWNIE::LindyGeneralOptimization(int ChosenModel)
 	double startingvalues[randomstarts][np];
 	double likelihoods[randomstarts][1];
 	for (int startnum=0;startnum<randomstarts;startnum++) {
-		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
+		const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
 		gsl_multimin_fminimizer *s = NULL;
 		gsl_vector *ss, *x;
 		size_t iter = 0, i;
@@ -15674,7 +15674,7 @@ gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 		}
 		for (int startnum=0;startnum<randomstarts;startnum++) {
 			if (optimizationalgorithm==1) { //do nelder-mead simplex
-				const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex2;
+				const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
 				gsl_multimin_fminimizer *s = NULL;
 				gsl_vector *ss, *x;
 				size_t iter = 0, i;
