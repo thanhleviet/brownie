@@ -9301,26 +9301,51 @@ for (chosenchar=startchar;chosenchar<=stopchar;chosenchar++) {
 
         rate=EstimateRate(currentVCVmat,tipsresid);
         //cout<<"Rate: "<<rate<<endl;
-        if (rate<=0) {
+        if (rate<0) {
             message="Tree ";
             message+=chosentree;
             message+=" excluded: one rate estimate (";
             message+=rate;
-            message+=") was nonpositive\n";
+            message+=") for taxset ";
+			message+=currenttaxset;
+			message+=" was negative\n";
             PrintMessage();
             summaryofresults+=chosentree;
-            summaryofresults+="\t--Has a nonpositive rate estimate (";
+            summaryofresults+="\t--Has a negative rate estimate (";
             summaryofresults+=rate;
             summaryofresults+="). No output.--\n";
             if (tablef_open) {
                 tmessage="";
                 tmessage+=chosentree;
-                tmessage+="\t--Has a nonpositive rate estimate. No output.--\n";
+                tmessage+="\t--Has a negative rate estimate. No output.--\n";
                 tablef<<tmessage;
             }
             goodtree=false;
             noerror=false;
         }
+		else if (rate==0) {
+			message="Tree ";
+            message+=chosentree;
+            message+=" excluded: one rate estimate (";
+            message+=rate;
+            message+=") for taxset ";
+			message+=currenttaxset;
+			message+=" was zero (this often happens if there is a single taxon in a clade OR if all taxa have the same value)\n";
+            PrintMessage();
+            summaryofresults+=chosentree;
+            summaryofresults+="\t--Has a zero rate estimate (";
+            summaryofresults+=rate;
+            summaryofresults+="). No output.--\n";
+            if (tablef_open) {
+                tmessage="";
+                tmessage+=chosentree;
+                tmessage+="\t--Has a zero rate estimate. No output.--\n";
+                tablef<<tmessage;
+            }
+            goodtree=false;
+            noerror=false;
+			
+		}
         else {
             gsl_matrix *RateTimesVCVfortest=gsl_matrix_calloc(currentVCVmat->size1,currentVCVmat->size2);
             gsl_matrix_memcpy(RateTimesVCVfortest, currentVCVmat);
