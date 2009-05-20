@@ -6961,6 +6961,236 @@ void BROWNIE::HandleLoss ( NexusToken& token )
     }
 }
 
+void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
+{
+	//This does, basically Pagel 1994's discrete model for correlation of two traits, but does it on both binary and multistate traits.
+	bool donesomething=false;
+	bool treeloop=false;
+	bool tablef_open=false;
+	bool appending=true;
+	bool replacing=false;
+	globalstates=true;
+	int char1=NULL;
+	int char2=NULL;
+	int pagelchosenmodel=1;
+	for(;;)
+    {
+        token.GetNextToken();
+		
+        if( token.Equals(";") ) {
+			if (donesomething==false) {
+					#do something
+			}
+            break;
+        }
+        else if (token.Abbreviation("Treeloop") ) {
+            nxsstring yesnotreeloop=GetFileName(token);
+            if (yesnotreeloop[0] == 'n') {
+                treeloop=false;
+            }
+            else {
+                treeloop=true;
+            }
+        }		
+		else if( token.Abbreviation("CHAR1") ) {
+            donenothing=false;
+            numbernexus = GetNumber(token);
+            char1=-1+atoi( numbernexus.c_str() ); //convert to int
+            message="You have chosen discrete character number ";
+            message+=char1+1;
+            PrintMessage();
+            if (char1<0) {
+                errormsg = "Error: must select a number greater than zero";
+                char1=0;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+            if (char1>-1+discretecharacters->GetNChar()) {
+                errormsg = "Error: you chose char number ";
+                errormsg += char1;
+                errormsg += " but there are only ";
+                errormsg += discretecharacters->GetNChar();
+                errormsg += " discrete characters loaded.\n";
+                char1=0;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+        }
+		else if( token.Abbreviation("CHAR2") ) {
+            donenothing=false;
+            numbernexus = GetNumber(token);
+            char2=-1+atoi( numbernexus.c_str() ); //convert to int
+            message="You have chosen discrete character number ";
+            message+=char2+1;
+            PrintMessage();
+            if (char2<0) {
+                errormsg = "Error: must select a number greater than zero";
+                char2=0;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+            if (char2>-1+discretecharacters->GetNChar()) {
+                errormsg = "Error: you chose char number ";
+                errormsg += char2;
+                errormsg += " but there are only ";
+                errormsg += discretecharacters->GetNChar();
+                errormsg += " discrete characters loaded.\n";
+                char2=0;
+                throw XNexus (errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+            }
+        }
+		
+		
+		else if (token.Abbreviation("Globalstates") ) {
+            nxsstring yesnoglobalstates=GetFileName(token);
+            if (yesnoglobalstates[0] == 'n') {
+                globalstates=false;
+            }
+            else {
+                globalstates=true;
+            }
+        }		
+		else if( token.Abbreviation("Replace") ) {
+            nxsstring yesnoreplace=GetFileName(token);
+            if (yesnoreplace[0] == 'n') {
+                replacing=false;
+            }
+            else {
+                replacing=true;
+				appending=false;
+            }
+        }
+        else if( token.Abbreviation("APpend") ) {
+            nxsstring yesnoappend=GetFileName(token);
+            if (yesnoappend[0] == 'n') {
+                appending=false;
+            }
+            else {
+                appending=true;
+            }
+        }
+		else if( token.Abbreviation("File") ) {
+            tablefname = GetFileName(token);
+            name_provided = true;
+        }		
+		else if( token.Abbreviation("Model") ) {
+            nxsstring chosenmodelinput=GetFileName(token);
+			//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
+			int numberofrates=(localnumbercharstates*localnumbercharstates)-localnumbercharstates;
+			int ntax=taxa->GetNumTaxonLabels();
+            if (token.Abbreviation("INDRev")) {
+				pagelchosenmodel=1;
+				message="The two traits are independent and rates for each estimated under a time-reversible model (gain and loss rates for a given trait set to be equal)";
+                PrintMessage();
+            }
+			else if (token.Abbreviation("INDNon")) {
+				pagelchosenmodel=2;
+				message="The two traits are independent and rates for each estimated under a non-time-reversible model (gain and loss rates for a given trait allowed to vary)";
+                PrintMessage();
+            }
+			else if (token.Abbreviation("DEPRev")) {
+				pagelchosenmodel=3;
+				message="The two traits are dependent and rates are estimated under a time-reversible model";
+                PrintMessage();
+            }
+			else if (token.Abbreviation("DEPNon")) {
+				pagelchosenmodel=4;
+				message="The two traits are dependent and rates are estimated under a non-time-reversible model";
+                PrintMessage();
+            }
+			
+			else if(token.Abbreviation("User")) {
+				pagelchosenmodel=5;
+                message="You have chosen a user-specified model. But this isn't implemented yet.";
+				PrintMessage();
+            }
+			
+            else {
+                errormsg = "Unexpected option (";
+                errormsg += chosenmodelinput;
+                errormsg += ") encountered reading Model command";
+                throw XNexus( errormsg);
+            }
+        }		
+		else if( token.Abbreviation("Freq") ) {
+            nxsstring chosenmodelinput=GetFileName(token);
+            if (token.Abbreviation("Uniform")) {
+				discretechosenstatefreqmodel=1;
+				message="You have chosen equal frequencies for all states";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("EMpirical")) {
+				discretechosenstatefreqmodel=2;
+                message="You have chosen to use empirical state frequencies";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("EQuilibrium")) {
+				discretechosenstatefreqmodel=3;
+                message="You have chosen to use equilibrium state frequencies";
+                PrintMessage();
+            }
+            else if(token.Abbreviation("Optimized")) {
+				discretechosenstatefreqmodel=4;
+                message="You have chosen to optimize state frequencies";
+                PrintMessage();
+            }
+			else if(token.Abbreviation("User")) {
+				discretechosenstatefreqmodel=5;
+                message="You have chosen to use user-set state frequencies";
+                PrintMessage();
+            }
+            else {
+                errormsg = "Unexpected option (";
+                errormsg += chosenmodelinput;
+                errormsg += ") encountered reading Freq command";
+                throw XNexus( errormsg);
+            }
+        }	
+        else if( token.Abbreviation("?") ) {
+			donesomething=true;
+            message="Usage: PagelCorrelation char1= char2=[model=] [freq=] [ratemat=] [treeloop=] [breaknum=] [file=] [append=] [replace=] [globalstates=]\n\n";
+			message+="This is a function to do the correlation tests of Pagel (1994), extended to allow different root frequencies and multistate traits\n";
+            message+="Available options:\n\n";
+            message+="Keyword ------- Option type ----------------------------- Current setting -----";
+			message+="\n Char1          <int>                                     ?";
+			message+="\n Char2          <int>                                     ?";
+			
+			message+="\n Model          <string>                                  ?";
+			message+="\n RateMat        (<vector>)                                ";
+				message+="Unspecified";			
+            message+="\n Treeloop       No|Yes                                    *No";
+ 			message+="\n File           <file name>                               *None";
+			message+="\n Append         No|Yes                                    *Yes";
+			message+="\n Replace        No|Yes                                    *No";
+			message+="\n GlobalStates   No|Yes                                    *No";
+            message+="\n                                                        *Option is nonpersistent\n";
+			message+="\nChar1 & 2: Allows you to specify the chosen characters. REQUIRED.";
+			message+="\nModel: Allows you to specify the model.";
+			message+="Freq: The probability of each state at the root can be based on the EMPIRICAL distribution at the tips, can be SET by the user\n";
+			message+="      (using the statevector command), can be OPTIMIZEd as part of the model, can be set to EQUILIBRIUM frequencies (the\n";
+			message+="      frequencies expected with the optimized rate matrix given infinitely-long branches), or can be set to be UNIFORM (equal).\n";
+			message+="Treeloop: Allows the analysis to be run across all the trees. A weighted average is returned (using tree weights such as posterior\n";
+			message+="          probabilities or bootstrap frequencies if they are available) as well as values for the individual trees.\n";
+			message+="File: Saves all output into a tab-delimited file\n";
+			message+="Append: If the output file exists, appends to it rather than overwrites it. Turned on by default.\n";
+			message+="Replace: If set to yes, if the output file already exists it will be quietly replaced.\n";
+			message+="GlobalStates: If no, the number of character states assumed for each character is the maximum number of observed states for just that one character.\n";
+			message+="              If yes, the number of states for each character is the maximum number of states observed for any character, even if the observed character\n";
+			message+="              is lacking some of those states. This is useful if, for example, you have simulated a three state character on the tree for parametric\n";
+			message+="              bootstrapping but some of the simulations result in characters with just states 0 and 1. Globalstates will automatically be set to yes\n";
+			message+="              if allchar=y";
+            PrintMessage();
+        }
+		else if( token.Abbreviation("Ratemat") ) {
+			errormsg = "Custom user matrices are not yet available. But please feel free to submit a patch to fix this!";
+			throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+		}
+		
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading Discrete command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+}
 
 void BROWNIE::HandleDiscrete( NexusToken& token )
 {
