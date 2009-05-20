@@ -228,6 +228,7 @@ public:
 	void HandleDiscrete( NexusToken& token );
 	void HandleSimulateCharacters( NexusToken& token);
 	void SimulateCharacters(int n, int chartype, nxsstring outputfilename, bool treeloop);
+	void HandlePagelDiscrete( NexusToken& token);
 	void HandleLoss( NexusToken& token );
 	void FindFixedDiscreteModel();
     void NumOpt( NexusToken& token);
