@@ -40,6 +40,7 @@ public:
 	~DiscreteMatrix();
 
 	void AddRows( int nAddRows );
+    void AddCols( int nAddCols ); //added by BCO
 	void AddState( int i, int j, int value );
 	void CopyStatesFromFirstTaxon( int i, int j );
    void DebugSaveMatrix( std::ostream& out, int colwidth = 12 );

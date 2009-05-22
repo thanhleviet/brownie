@@ -1187,6 +1187,21 @@ bool CharactersBlock::IsDeleted( int i )
 	return !IsActiveTaxon(i);
 }
 
+//BCO added below function
+void CharactersBlock::AddCharacters(int i)
+{
+    matrix->AddCols(i);
+    nchar=nchar+i;
+    ncharTotal=ncharTotal+i;
+    delete [] activeChar;
+    activeChar = new bool[nchar];
+    for( int j = 0; j < nchar; j++ ) {
+		activeChar[j] = true; 
+    }
+    charPos=NULL;
+    BuildCharPosArray();
+}
+
 /**
  * @method IsEliminated [bool:public]
  * @param origCharIndex [int] the character in question

@@ -155,6 +155,7 @@ public:
 	void  RestoreTaxon( int i );
 	bool  IsActiveTaxon( int i );
 	bool  IsDeleted( int i );
+    void AddCharacters(int i); //Added by BCO;
 	
 	bool* GetActiveTaxonArray();
 	bool* GetActiveCharArray();

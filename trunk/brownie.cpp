@@ -6965,7 +6965,11 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
 {
 	//This does, basically Pagel 1994's discrete model for correlation of two traits, but does it on both binary and multistate traits.
 	bool donesomething=false;
+    bool donenothing=true;
 	bool treeloop=false;
+    ofstream tablef;
+    nxsstring tablefname;
+    bool name_provided=false;
 	bool tablef_open=false;
 	bool appending=true;
 	bool replacing=false;
@@ -6979,7 +6983,11 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
 		
         if( token.Equals(";") ) {
 			if (donesomething==false) {
-					#do something
+                if(debugmode) {
+                    discretecharacters->AddCharacters(5);
+                    discretecharacters->Report(cout);
+                }
+					//do something
 			}
             break;
         }
@@ -6994,7 +7002,7 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
         }		
 		else if( token.Abbreviation("CHAR1") ) {
             donenothing=false;
-            numbernexus = GetNumber(token);
+            nxsstring numbernexus = GetNumber(token);
             char1=-1+atoi( numbernexus.c_str() ); //convert to int
             message="You have chosen discrete character number ";
             message+=char1+1;
@@ -7016,7 +7024,7 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
         }
 		else if( token.Abbreviation("CHAR2") ) {
             donenothing=false;
-            numbernexus = GetNumber(token);
+            nxsstring numbernexus = GetNumber(token);
             char2=-1+atoi( numbernexus.c_str() ); //convert to int
             message="You have chosen discrete character number ";
             message+=char2+1;
@@ -11775,6 +11783,9 @@ void BROWNIE::Read( NexusToken& token )
         }
 		else if( token.Abbreviation("DIscrete") ) {
 			HandleDiscrete( token );
+		}
+        else if( token.Abbreviation("PAGELcorrelation") ) {
+			HandlePagelDiscrete( token );
 		}
 		else if( token.Abbreviation("SIMulate") ) {
 			HandleSimulateCharacters( token );
