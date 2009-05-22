@@ -110,6 +110,54 @@ void DiscreteMatrix::AddRows( int nAddRows )
    nrows = new_nrows;
 }
 
+
+//BCO added the function below
+/**
+ * @method AddCols [void:private]
+ * @param nAddCols [int] the number of additional columns to allocate
+ *
+ * Allocates memory for nAddCols additional columns and updates the variable
+ * ncols.  Data already stored in data is not destroyed; the newly-allocated
+ * columns are added at the right of the existing matrix.
+ */
+void DiscreteMatrix::AddCols( int nAddCols )
+{
+    assert(nAddCols>0);
+	int i;
+    int j;
+    int ncolsOrig=ncols;
+    ncols = ncols + nAddCols;
+    DiscreteDatum** new_data = new DiscreteDatum*[nrows];
+	for( i = 0; i < nrows; i++ )
+		new_data[i] = data[i];
+
+    Reset(nrows,ncols); //clears out old datamatrix
+    for( i = 0; i < nrows; i++ ) {
+        for (j=0; j<ncolsOrig; j++) {
+            data[i][j].CopyFrom( new_data[i][j] ); //This is not working yet
+        }
+    }
+    delete [] new_data;
+    /*
+	DiscreteDatum** new_data = new DiscreteDatum*[nrows];
+
+	for( i = 0; i < nrows; i++ ) {
+        new_data[i] = data[i];
+    }
+    delete [] data;
+    data = new_data;
+    for( i = 0; i < nrows; i++ ) {
+        for (j=0; j<ncols; j++) {
+            data[i,j]=new DiscreteDatum;
+            //SetMissing(i,j);
+            cout<<"i="<<i<<" j="<<j<<" new datum"<<endl;
+        }
+    }
+     */
+}
+//BCO added the function above
+
+
 /**
  * @method AddState [void:public]
  * @param i [int] the (0-offset) index of the taxon in question
