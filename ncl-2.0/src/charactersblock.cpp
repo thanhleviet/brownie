@@ -1201,6 +1201,23 @@ void CharactersBlock::AddCharacters(int i)
     charPos=NULL;
     BuildCharPosArray();
 }
+//BCO added above function
+
+//BCO added below function
+void CharactersBlock::SetState(int i, int j, int value)
+{
+    matrix->AddState( i, j, value );
+}
+//BCO added above function
+
+//BCO added below function
+void CharactersBlock::MaximizeSymbols()
+{
+    strcpy( symbols, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" );
+
+}
+//BCO added above function
+
 
 /**
  * @method IsEliminated [bool:public]

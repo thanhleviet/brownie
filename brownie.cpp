@@ -6973,9 +6973,9 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
 	bool tablef_open=false;
 	bool appending=true;
 	bool replacing=false;
-	globalstates=true;
-	int char1=NULL;
-	int char2=NULL;
+	globalstates=false;
+	int char1=0; //is 0 offset
+	int char2=1;
 	int pagelchosenmodel=1;
 	for(;;)
     {
@@ -6983,12 +6983,254 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
 		
         if( token.Equals(";") ) {
 			if (donesomething==false) {
-                if(debugmode) {
-                    discretecharacters->AddCharacters(5);
-                    discretecharacters->Report(cout);
-                }
-					//do something
+				assert(char1>=0);
+				assert(char2>=0);
+				int char1numstates=discretecharacters->GetObsNumStates(char1); //0 offset in discretematrix
+				int char2numstates=discretecharacters->GetObsNumStates(char2);
+				int stateConversionMatrix[char1numstates][char2numstates];
+				vector<double> temporaryratematfixedvector; //Will be a vector containing JUST the fixed values
+				vector<int> temporaryratematassignvector; //Will be a vector containing ints corresponding to "pointers" to either  fixed or variable values. If entries are non-negative,
+													//they point to entries in temporaryratematfixedvector (i.e., value of 2 means the rate is whatever is stored at temporaryratematfixedvector[2])
+				string tempfreerateletterstring;		//Allows mapping of letters on input to negative values in temporaryratematassignvector vector. New letters are appended, old ones are looked up
+				usermatrix=""; //just a string to store the description
+				
+				int newstate=0;
+				for (int i=0; i<char1numstates; i++) {
+					for (int j=0; j<char2numstates; j++) {
+						stateConversionMatrix[i][j]=newstate;
+						cout<<"i="<<i<<" j="<<j<<" newstate="<<newstate<<endl;
+						newstate++;
+					}
+				}
+				discretecharacters->AddCharacters(1);
+                int ntax=taxa->GetNumTaxonLabels();
+				for (int taxonid=0; taxonid<ntax; taxonid++) {
+					cout<<endl<<"taxonid="<<taxonid;
+					for (int charid=0; charid<discretecharacters->GetNChar(); charid++) {
+						cout<<" "<<discretecharacters->GetInternalRepresentation(taxonid,charid);
+					}
+				}
+				cout<<endl;
+				discretecharacters->MaximizeSymbols();
+				for (int taxonid=0; taxonid<ntax; taxonid++) {
+					int index1=discretecharacters->GetInternalRepresentation(taxonid,char1);
+					int index2=discretecharacters->GetInternalRepresentation(taxonid,char2);
+					cout<<"index1="<<index1<<" index2="<<index2<<endl;
+					cout<<"stateConversionMatrix[discretecharacters->GetState(taxonid,char1)][atoi(discretecharacters->GetState(taxonid,char2)]))="<<stateConversionMatrix[index1][index2]<<endl;
+					discretecharacters->SetState(taxonid,-1+discretecharacters->GetNChar(),stateConversionMatrix[index1][index2]);
+				}
+				localnumbercharstates=(discretecharacters->GetObsNumStates(char1))*(discretecharacters->GetObsNumStates(char2));
+				
+				//Now create the rate matrix
+				string assigmentMatrix[localnumbercharstates][localnumbercharstates]; //Stores the entries
+				string assigmentMatrixChar1[char1numstates][char1numstates]; //Stores variables for rates
+				string assigmentMatrixChar2[char2numstates][char2numstates]; //Stores variables for rates
+				int freeparameterLabelIndex=0;
+				string freeparameterLabels="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+				
+				
+				/* this creates a matrix like:
+					
+					0	1
+					0	-	a
+					1	b	0
+					
+					if the model is non-time reversible within a character (i.e.,possibly different gain loss rates, as specified with
+																			"INDNon" or "DEPNon") or
+					
+					0	1
+					0	-	a
+					1	a	0
+					
+					otherwise. Same for char2, though its parameters start with c (if two params have been used up with char1) or b (if one param has been used up with char1)
+					
+					Basic idea is that the optimization function assigns one rate parameter for every unique letter. So two rates with the same letter are assigned to the same parameter
+					*/
+				for (int i=0; i<char1numstates; i++) {
+					for (int j=0; j<char1numstates; j++) {
+						if (i<j) { //upper part of matrix
+							if (pagelchosenmodel==1 || pagelchosenmodel==3) { //a reversible model within each char (gain and loss rate within a char is equal)
+								assigmentMatrixChar1[i][j]=freeparameterLabels[freeparameterLabelIndex];
+								assigmentMatrixChar1[j][i]=freeparameterLabels[freeparameterLabelIndex]; //so fill upper and lower parts with same rate
+								freeparameterLabelIndex++;
+							}
+							else if (pagelchosenmodel==2 || pagelchosenmodel==4) { //a nonreversible model within each char
+								assigmentMatrixChar1[i][j]=freeparameterLabels[freeparameterLabelIndex];
+								freeparameterLabelIndex++; //so, we use the next rate parameter for the other rate
+								assigmentMatrixChar1[j][i]=freeparameterLabels[freeparameterLabelIndex]; //so fill upper and lower parts with same rate
+								freeparameterLabelIndex++;
+							}
+						}
+						else if (i==j) {
+							assigmentMatrixChar1[i][j]="0";
+						}
+					}
+				}
+				for (int i=0; i<char2numstates; i++) {
+					for (int j=0; j<char2numstates; j++) {
+						if (i<j) { //upper part of matrix
+							if (pagelchosenmodel==1 || pagelchosenmodel==3) { //a reversible model within each char (gain and loss rate within a char is equal)
+								assigmentMatrixChar2[i][j]=freeparameterLabels[freeparameterLabelIndex];
+								assigmentMatrixChar2[j][i]=freeparameterLabels[freeparameterLabelIndex]; //so fill upper and lower parts with same rate
+								freeparameterLabelIndex++;
+							}
+							else if (pagelchosenmodel==2 || pagelchosenmodel==4) { //a nonreversible model within each char
+								assigmentMatrixChar2[i][j]=freeparameterLabels[freeparameterLabelIndex];
+								freeparameterLabelIndex++; //so, we use the next rate parameter for the other rate
+								assigmentMatrixChar2[j][i]=freeparameterLabels[freeparameterLabelIndex]; //so fill upper and lower parts with same rate
+								freeparameterLabelIndex++;
+							}
+						}
+						else if (i==j) {
+							assigmentMatrixChar2[i][j]="0";
+						}
+					}
+				}
+				
+				//Fill in Q matrix by row, omitting the diagonal elements. So, first 00 by [00], 01, 02, etc., then 01 by 00, [01], 02, etc.
+				/*idea here is to create a matrix like
+					00	01	10	11
+					00	-	c1	a1	0
+					01	d1	-	0	a2
+					10	b1	0	-	c2
+					11	0	b2	d2	-
+					
+					when the original char matrices were
+Char1:				Char2
+					0	1				0	1
+					0	-	a			0	-	c
+					1	b	-			1	d	-
+					
+					If the model is time reversible ("INDRev" or "DEPRev"), then a==b and c==d, and this is represented in the assigmentMatrixChar* matrices by having the same symbol for gain and loss rates (or multistate analog). 
+					Thus, rate of 00->10 (a1) should equal 10->00 (b1): the gain/loss rates of character 1 when character 2 is in state 0 are equal. So, the first time we sample rate a or b, they should be the same variable label in assigmentMatrixChar*.
+					If the model is not time-reversible ("INDNon" or "DEPNon"), a!=b and there will be different labels in assigmentMatrixChar*
+					If the model is independent ("INDRev" or "INDNon"), the rate of 00->10 (a1) and 01->11 (a2) should be equal: the rate of the first character changing from 0 to 1 is the same no matter what state the second character is. Thus, the rates
+					a1 and a2 should have the same label, that stored in assigmentMatrixChar1 (with label "a").
+					If the model is dependent ("DEPRev" or "DEPNon"), a1 and a2 may be different, so we'll need a different label for a2 (this can be done by relabeling "a" in assigmentMatrixChar1). However, if the model is time-reversible, a2==b2, so in that case, when updating "a", we'd also have to update "b")
+
+*/
+				
+				for (int i=0; i<char1numstates; i++) {
+					for (int j=0; j<char2numstates; j++) {
+						int rowstate=stateConversionMatrix[i][j];
+						//The above loops gives rows: ij=00, 01, 02, .. 0N, 10, 11, 12, ...1N, ...MN, where M and N are the the maximum state number for each char (so, if both traits are binary, M=N=1: highest state you can have is 1 (the other state is 0).
+						//Now, for each row, move across columns.
+						for (int k=0; k<char1numstates; k++) {
+							for (int l=0; l<char2numstates; l++) {
+								int colstate=stateConversionMatrix[k][l];
+								//kl is the label for the column. So, cell with row ij (say, 02) and column kl (say, 12) is the cell in the qmatrix for going from state pair 02 to state pair 12
+								if (i==k && j==l) { //we must be on a diagonal. 
+								}
+								else if (i!=k && j!=l) {
+									//we're at a cell representing a change of both characters simultaneously (01->23, for example). Set to zero (can't change both at same instant).
+									assigmentMatrix[rowstate][colstate]="0";
+								}
+								else if (colstate>rowstate) { //upper diagonal part
+									//there's a change in just one of the chars
+									if (i!=k) { //change in char 1
+										assigmentMatrix[rowstate][colstate]=assigmentMatrixChar1[i][k]; //is the rate of going from state i to state k
+										if (pagelchosenmodel==1 || pagelchosenmodel==2) { // traits are independent, so a1==a2. If they are also non-reversible, a1==b1, but this is taken care of by the assigmentMatrixChar* matrix
+											assigmentMatrix[colstate][rowstate]=assigmentMatrixChar1[k][i];											
+										}
+										else if (pagelchosenmodel==3 || pagelchosenmodel==4) { //traits are dependent, so a1 and a2 differ. So, we'll have to get a new label for a2
+											freeparameterLabelIndex++;
+											assigmentMatrixChar1[i][k]=freeparameterLabels[freeparameterLabelIndex];
+											if (pagelchosenmodel==3) { //reversible, so backwards rate must have the new rate parameter
+												assigmentMatrixChar1[k][i]=assigmentMatrixChar1[i][k];
+											}
+											else if (pagelchosenmodel==4) { //non-reversible, so backwards rate also needs a new parameter
+												freeparameterLabelIndex++;
+												assigmentMatrixChar1[k][i]=freeparameterLabels[freeparameterLabelIndex];
+											}
+											assigmentMatrix[colstate][rowstate]=assigmentMatrixChar1[k][i];
+										}
+									}
+									else { //change in char2
+										assigmentMatrix[rowstate][colstate]=assigmentMatrixChar2[j][l]; //is the rate of going from state i to state k
+										if (pagelchosenmodel==1 || pagelchosenmodel==2) { // traits are independent, so a1==a2. If they are also non-reversible, a1==b1, but this is taken care of by the assigmentMatrixChar* matrix
+											assigmentMatrix[colstate][rowstate]=assigmentMatrixChar2[l][j];											
+										}
+										else if (pagelchosenmodel==3 || pagelchosenmodel==4) { //traits are dependent, so a1 and a2 differ. So, we'll have to get a new label for a2
+											freeparameterLabelIndex++;
+											assigmentMatrixChar2[j][l]=freeparameterLabels[freeparameterLabelIndex];
+											if (pagelchosenmodel==3) { //reversible, so backwards rate must have the new rate parameter
+												assigmentMatrixChar2[l][j]=assigmentMatrixChar2[j][l];
+											}
+											else if (pagelchosenmodel==4) { //non-reversible, so backwards rate also needs a new parameter
+												freeparameterLabelIndex++;
+												assigmentMatrixChar2[l][j]=freeparameterLabels[freeparameterLabelIndex];
+											}
+											assigmentMatrix[colstate][rowstate]=assigmentMatrixChar2[l][j];
+										}
+										
+									}
+									
+								}
+								
+							}
+						}
+						
+					}
+				}
+				
+				//Finally, we have our final matrix of rates. Now we just have to convert it to something ready for input to the DiscreteGeneralOptimization function
+				for (int i=0; i<char1numstates; i++) {
+					for (int j=0; j<char2numstates; j++) {
+						int rowstate=stateConversionMatrix[i][j];
+						//The above loops gives rows: ij=00, 01, 02, .. 0N, 10, 11, 12, ...1N, ...MN, where M and N are the the maximum state number for each char (so, if both traits are binary, M=N=1: highest state you can have is 1 (the other state is 0).
+						//Now, for each row, move across columns.
+						for (int k=0; k<char1numstates; k++) {
+							for (int l=0; l<char2numstates; l++) {
+								int colstate=stateConversionMatrix[k][l];
+								if (colstate!=rowstate) { //so, avoid diagonals
+									string assigmentMatrixEntry=(assigmentMatrix[colstate][rowstate]);
+									usermatrix+=assigmentMatrixEntry;
+									usermatrix+=" ";
+									if (isalpha(assigmentMatrixEntry[0])) { //Is a letter -- means that parameter is free to vary, but has same value as other rates with that value
+										string::size_type loc = tempfreerateletterstring.find( assigmentMatrixEntry[0], 0 );
+										if( loc != string::npos ) {
+											temporaryratematassignvector.push_back(-1*(loc+1));
+										} else {
+											tempfreerateletterstring.append(1,assigmentMatrixEntry[0]);
+											temporaryratematassignvector.push_back(-1*(tempfreerateletterstring.size()));         
+										}
+									}
+									else { //is a number, which means it's a fixed value
+										temporaryratematassignvector.push_back(temporaryratematfixedvector.size());
+										temporaryratematfixedvector.push_back(atof( assigmentMatrixEntry.c_str()));
+									}
+								}
+							}
+						}
+					}
+				}
+			
+			freerateletterstring=tempfreerateletterstring;
+			ratematfixedvector.swap(temporaryratematfixedvector);
+			ratematassignvector.swap(temporaryratematassignvector);
+			numberoffreefreqs=localnumbercharstates-1;
+			numberoffreerates=freerateletterstring.size();
+			numberoffreeparameters=numberoffreerates+numberoffreefreqs; //stored globally for later calculation of AIC/AICc
+			if (((1.0*ntax)/(1.0*numberoffreeparameters))<10) {
+				message="\n-------------------------------------------------------------------------------\n WARNING: You are trying to estimate ";
+				message+=numberoffreeparameters;
+				if (numberoffreeparameters==1) {
+					message+=" parameter, but only have ";
+				}
+				else {
+					message+=" parameters, but only have ";
+				}
+				message+=ntax; 
+				message+=" taxa.\n Make sure to try some simpler models, and expect quite imprecise estimates.\n";
+				message+=" You might want to get ~";
+				message+=10*localnumbercharstates;
+				message+=" to do this well (very rough estimate)\n-------------------------------------------------------------------------------";
+				PrintMessage();
 			}
+			
+			gsl_vector* output=DiscreteGeneralOptimization();
+			}
+			
             break;
         }
         else if (token.Abbreviation("Treeloop") ) {
@@ -7006,6 +7248,7 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
             char1=-1+atoi( numbernexus.c_str() ); //convert to int
             message="You have chosen discrete character number ";
             message+=char1+1;
+			message+=" for the first trait";
             PrintMessage();
             if (char1<0) {
                 errormsg = "Error: must select a number greater than zero";
@@ -7028,6 +7271,7 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
             char2=-1+atoi( numbernexus.c_str() ); //convert to int
             message="You have chosen discrete character number ";
             message+=char2+1;
+			message+=" for the second trait";
             PrintMessage();
             if (char2<0) {
                 errormsg = "Error: must select a number greater than zero";

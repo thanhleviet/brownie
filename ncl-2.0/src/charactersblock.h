@@ -156,6 +156,8 @@ public:
 	bool  IsActiveTaxon( int i );
 	bool  IsDeleted( int i );
     void AddCharacters(int i); //Added by BCO;
+	void SetState( int i, int j, int value ); //Added by BCO;
+	void MaximizeSymbols(); //Added by BCO
 	
 	bool* GetActiveTaxonArray();
 	bool* GetActiveCharArray();
