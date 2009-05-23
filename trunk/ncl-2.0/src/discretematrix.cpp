@@ -127,17 +127,18 @@ void DiscreteMatrix::AddCols( int nAddCols )
     int j;
     int ncolsOrig=ncols;
     ncols = ncols + nAddCols;
-    DiscreteDatum** new_data = new DiscreteDatum*[nrows];
-	for( i = 0; i < nrows; i++ )
-		new_data[i] = data[i];
-
+	int originalData[nrows][ncolsOrig];
+	for( i = 0; i < nrows; i++ ) {
+		for (j=0; j<ncolsOrig; j++) {
+			originalData[i][j]=GetState(i,j);
+		}
+	}
     Reset(nrows,ncols); //clears out old datamatrix
     for( i = 0; i < nrows; i++ ) {
         for (j=0; j<ncolsOrig; j++) {
-            data[i][j].CopyFrom( new_data[i][j] ); //This is not working yet
+			SetState(i,j,originalData[i][j]);
         }
     }
-    delete [] new_data;
     /*
 	DiscreteDatum** new_data = new DiscreteDatum*[nrows];
 
