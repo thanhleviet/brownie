@@ -6967,22 +6967,63 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
 	bool donesomething=false;
     bool donenothing=true;
 	bool treeloop=false;
+ 	nxsstring tmessage;
     ofstream tablef;
     nxsstring tablefname;
-    bool name_provided=false;
-	bool tablef_open=false;
+    bool tablef_open=false;
+    bool name_provided=false;	
 	bool appending=true;
 	bool replacing=false;
 	globalstates=false;
 	int char1=0; //is 0 offset
 	int char2=1;
 	int pagelchosenmodel=1;
+	discretechosenmodel=4;
+	tmessage="";
+	int vectorposition=0;
+	int position=-1; //used only in user-set model
 	for(;;)
     {
         token.GetNextToken();
 		
         if( token.Equals(";") ) {
 			if (donesomething==false) {
+				if( appending && replacing ) {
+					errormsg = "Cannot specify APPEND and REPLACE at the same time";
+					throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+				}		
+				bool exists = FileExists( tablefname.c_str() );
+				bool userok = true;
+				if (appending && name_provided) {
+					tablef_open = true;
+					tablef.open( tablefname.c_str(), ios::out | ios::app );
+					message = "\nAppending to discrete model output file (creating it if need be) ";
+					message += tablefname;
+					PrintMessage();
+				}
+				else if (name_provided) {
+					if( exists && !replacing && !UserSaysOk( "Ok to replace?", "Discrete model output file specified already exists" ) )
+						userok = false;
+					if( userok && !tablef_open) {
+						tablef_open = true;
+						tablef.open( tablefname.c_str() );
+					}
+					if( exists && userok ) {
+						message = "\nReplacing discrete model output file ";
+						message += tablefname;
+					}
+					else if( userok ) {
+						message = "\nDiscrete model output file ";
+						message += tablefname;
+						message += " opened";
+					}
+					else {
+						errormsg = "Aborting the discrete optimization so as not to overwrite the file.\n";
+						throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+					}
+					PrintMessage();
+				}
+				
 				assert(char1>=0);
 				assert(char2>=0);
 				int char1numstates=discretecharacters->GetObsNumStates(char1); //0 offset in discretematrix
@@ -6998,25 +7039,25 @@ void BROWNIE::HandlePagelDiscrete ( NexusToken& token)
 				for (int i=0; i<char1numstates; i++) {
 					for (int j=0; j<char2numstates; j++) {
 						stateConversionMatrix[i][j]=newstate;
-						cout<<"i="<<i<<" j="<<j<<" newstate="<<newstate<<endl;
+						//cout<<"i="<<i<<" j="<<j<<" newstate="<<newstate<<endl;
 						newstate++;
 					}
 				}
 				discretecharacters->AddCharacters(1);
                 int ntax=taxa->GetNumTaxonLabels();
-				for (int taxonid=0; taxonid<ntax; taxonid++) {
-					cout<<endl<<"taxonid="<<taxonid;
-					for (int charid=0; charid<discretecharacters->GetNChar(); charid++) {
-						cout<<" "<<discretecharacters->GetInternalRepresentation(taxonid,charid);
-					}
-				}
-				cout<<endl;
+				//for (int taxonid=0; taxonid<ntax; taxonid++) {
+				//	cout<<endl<<"taxonid="<<taxonid;
+				//	for (int charid=0; charid<discretecharacters->GetNChar(); charid++) {
+				//		cout<<" "<<discretecharacters->GetInternalRepresentation(taxonid,charid);
+				//	}
+				//}
+				//cout<<endl;
 				discretecharacters->MaximizeSymbols();
 				for (int taxonid=0; taxonid<ntax; taxonid++) {
 					int index1=discretecharacters->GetInternalRepresentation(taxonid,char1);
 					int index2=discretecharacters->GetInternalRepresentation(taxonid,char2);
-					cout<<"index1="<<index1<<" index2="<<index2<<endl;
-					cout<<"stateConversionMatrix[discretecharacters->GetState(taxonid,char1)][atoi(discretecharacters->GetState(taxonid,char2)]))="<<stateConversionMatrix[index1][index2]<<endl;
+					//cout<<"index1="<<index1<<" index2="<<index2<<endl;
+					//cout<<"stateConversionMatrix[discretecharacters->GetState(taxonid,char1)][atoi(discretecharacters->GetState(taxonid,char2)]))="<<stateConversionMatrix[index1][index2]<<endl;
 					discretecharacters->SetState(taxonid,-1+discretecharacters->GetNChar(),stateConversionMatrix[index1][index2]);
 				}
 				localnumbercharstates=(discretecharacters->GetObsNumStates(char1))*(discretecharacters->GetObsNumStates(char2));
@@ -7205,30 +7246,213 @@ Char1:				Char2
 					}
 				}
 			
+				for (int i=0; i<char1numstates; i++) {
+					for (int j=0; j<char2numstates; j++) {
+						int rowstate=stateConversionMatrix[i][j];
+						cout<<endl<<"("<<i<<","<<j<<"):\t";
+						for (int k=0; k<char1numstates; k++) {
+							for (int l=0; l<char2numstates; l++) {
+								int colstate=stateConversionMatrix[k][l];
+								if (colstate!=rowstate) { //so, avoid diagonals
+									cout<<assigmentMatrix[rowstate][colstate]<<"\t";
+								}
+								else {
+									cout<<"-\t";
+								}
+							}
+						}
+					}
+				}
+				cout<<endl;
+				
 			freerateletterstring=tempfreerateletterstring;
 			ratematfixedvector.swap(temporaryratematfixedvector);
 			ratematassignvector.swap(temporaryratematassignvector);
 			numberoffreefreqs=localnumbercharstates-1;
 			numberoffreerates=freerateletterstring.size();
 			numberoffreeparameters=numberoffreerates+numberoffreefreqs; //stored globally for later calculation of AIC/AICc
-			if (((1.0*ntax)/(1.0*numberoffreeparameters))<10) {
-				message="\n-------------------------------------------------------------------------------\n WARNING: You are trying to estimate ";
-				message+=numberoffreeparameters;
-				if (numberoffreeparameters==1) {
-					message+=" parameter, but only have ";
+			
+			tmessage="Tree\tTree weight\tTree name\tChar1\tChar2\tModel\tStateFreq\t\tneglnL\tK\tAIC\tAICc\t";
+			for (int n=0; n<localnumbercharstates; n++) {
+				tmessage+="P(";
+				tmessage+=n;
+				tmessage+=")\t";
+			}
+			for (int i=0; i<char1numstates; i++) {
+				for (int j=0; j<char2numstates; j++) {
+					int rowstate=stateConversionMatrix[i][j];
+						//The above loops gives rows: ij=00, 01, 02, .. 0N, 10, 11, 12, ...1N, ...MN, where M and N are the the maximum state number for each char (so, if both traits are binary, M=N=1: highest state you can have is 1 (the other state is 0).
+						//Now, for each row, move across columns.
+					for (int k=0; k<char1numstates; k++) {
+						for (int l=0; l<char2numstates; l++) {
+							int colstate=stateConversionMatrix[k][l];
+								//kl is the label for the column. So, cell with row ij (say, 02) and column kl (say, 12) is the cell in the qmatrix for going from state pair 02 to state pair 12
+							if (colstate!=rowstate) {
+								tmessage+="q_(";
+								tmessage+=i;
+								tmessage+=",";
+								tmessage+=j;
+								tmessage+=")_(";
+								tmessage+=k;
+								tmessage+=",";
+								tmessage+=l;
+								tmessage+=")";
+								tmessage+="\t";
+								
+							}
+						}
+					}
 				}
-				else {
-					message+=" parameters, but only have ";
-				}
-				message+=ntax; 
-				message+=" taxa.\n Make sure to try some simpler models, and expect quite imprecise estimates.\n";
-				message+=" You might want to get ~";
-				message+=10*localnumbercharstates;
-				message+=" to do this well (very rough estimate)\n-------------------------------------------------------------------------------";
-				PrintMessage();
+			}
+			if (tablef_open && (!exists || !appending) ) {
+				tablef<<tmessage;
 			}
 			
+			
+			
+			
+			
+			
 			gsl_vector* output=DiscreteGeneralOptimization();
+			nxsstring treename=trees->GetTreeName(chosentree-1);
+			message="Tree = ";
+			message+=chosentree;
+			message+=": ";
+			message+=treename;
+			message+="\n";
+			assert(output->size>0);
+			double likelihood=gsl_vector_get(output,-1+output->size);
+			double K=1.0*numberoffreeparameters;
+			double aicc=(2.0*likelihood)+2.0*K+2.0*K*(K+1.0)/(1.0*ntax-K-1.0); //AICc, n=1;
+			double aic=(2.0*likelihood)+2.0*K;
+			char outputstring[14];
+			message+="\n  model = ";
+			if (pagelchosenmodel==1) {
+				message+="IndRev (no correlation between traits, equal forward-reverse rates of trait evolution within a character)";
+			}
+			else if (pagelchosenmodel==2) {
+				message+="IndNon (no correlation between traits, forward-reverse rates of trait evolution within a character may vary)";
+			}
+			else if (pagelchosenmodel==3) {
+				message+="DepRev (correlation between traits, equal forward-reverse rates of trait evolution within a character)";
+			}
+			else if (pagelchosenmodel==4) {
+				message+="DepNon (correlation between traits, forward-reverse rates of trait evolution within a character may vary)";
+			}
+			message+="\n  state frequency = ";
+			if (discretechosenstatefreqmodel==1) {
+				message+="Uniform";
+			}
+			else if (discretechosenstatefreqmodel==2) {
+				message+="Empirical";
+			}
+			else if (discretechosenstatefreqmodel==3) {
+				message+="Equilibrium";
+			}
+			else if (discretechosenstatefreqmodel==4) {
+				message+="Optimized";
+			}
+			else if (discretechosenstatefreqmodel==5) {
+				message+="User";
+			}
+			
+			message+="\n  -lnL = ";
+			sprintf(outputstring,"%14.6f",likelihood);
+			message+=outputstring;
+			message+="\n  AIC  = ";
+			sprintf(outputstring,"%14.6f",aic);
+			message+=outputstring;
+			message+="\n  AICc = ";
+			sprintf(outputstring,"%14.6f",aicc);
+			message+=outputstring;
+			
+	/*		cout<<endl<<"output = (";
+			for (int i=0; i<output->size; i++) {
+					cout<<endl<<gsl_vector_get(output,i);
+			}
+			cout<<endl<<")"<<endl;
+			*/
+			 vectorposition=0;
+			for (int i=0; i<char1numstates; i++) {
+				for (int j=0; j<char2numstates; j++) {
+					int rowstate=stateConversionMatrix[i][j];
+						//The above loops gives rows: ij=00, 01, 02, .. 0N, 10, 11, 12, ...1N, ...MN, where M and N are the the maximum state number for each char (so, if both traits are binary, M=N=1: highest state you can have is 1 (the other state is 0).
+						//Now, for each row, move across columns.
+					for (int k=0; k<char1numstates; k++) {
+						for (int l=0; l<char2numstates; l++) {
+							int colstate=stateConversionMatrix[k][l];
+								//kl is the label for the column. So, cell with row ij (say, 02) and column kl (say, 12) is the cell in the qmatrix for going from state pair 02 to state pair 12
+							if (colstate!=rowstate) {
+								message+="\n  q_(";
+								message+=i;
+								message+=",";
+								message+=j;
+								message+=")_(";
+								message+=k;
+								message+=",";
+								message+=l;
+								message+=")";
+								message+=" = ";
+								if (ratematassignvector[vectorposition]>=0) { //means there's an assigned rate
+									message+=ratematfixedvector[(ratematassignvector[vectorposition])];
+									message+=" FIXED";
+								}
+								else {
+									position=-1*(1+ratematassignvector[vectorposition]);
+									message+=gsl_vector_get(output,position);
+									if (gsl_vector_get(output,position)<0.00000001 && !nonnegvariables) {
+										message+="  Warning: an estimate near zero sometimes makes estimating other parameters, and therefore the lnL, very imprecise. Play with numopt or the model";
+									}
+									
+								}
+								vectorposition++;
+							}
+						}
+					}
+				}
+			}
+			
+			 vectorposition=0;
+			message+="\n\nQ Matrix (rounded)\n";
+			for (int i=0; i<char1numstates; i++) {
+				for (int j=0; j<char2numstates; j++) {
+					message+="\t(";
+					message+=i;
+					message+=",";
+					message+=j;
+					message+=")";
+				}
+			}
+			for (int i=0; i<char1numstates; i++) {
+				for (int j=0; j<char2numstates; j++) {
+					int rowstate=stateConversionMatrix[i][j];
+					message+="\n(";
+					message+=i;
+					message+=",";
+					message+=j;
+					message+=")";
+					for (int k=0; k<char1numstates; k++) {
+						for (int l=0; l<char2numstates; l++) {
+							int colstate=stateConversionMatrix[k][l];
+							if (colstate!=rowstate) {
+								message+="\t";
+								if (ratematassignvector[vectorposition]>=0) { //means there's an assigned rate
+									message+=0.001*floor(1000.0*ratematfixedvector[(ratematassignvector[vectorposition])]);
+								}
+								else {
+									position=-1*(1+ratematassignvector[vectorposition]);
+									message+=0.001*floor(1000.0*gsl_vector_get(output,position));
+								}
+								vectorposition++;
+							}
+							else {
+								message+="\t-";
+							}
+						}
+					}
+				}
+			}
+			PrintMessage();
 			}
 			
             break;
@@ -7412,9 +7636,11 @@ Char1:				Char2
 			message+="\n Append         No|Yes                                    *Yes";
 			message+="\n Replace        No|Yes                                    *No";
 			message+="\n GlobalStates   No|Yes                                    *No";
-            message+="\n                                                        *Option is nonpersistent\n";
-			message+="\nChar1 & 2: Allows you to specify the chosen characters. REQUIRED.";
-			message+="\nModel: Allows you to specify the model.";
+            message+="\n                                                        *Option is nonpersistent\n\n";
+			message+="Char1 & 2: Allows you to specify the chosen characters. REQUIRED.\n";
+			message+="Model: Allows you to specify the model. The model can be INDependent or DEPendent between the two characters. Within each character,\n";
+			message+="       the forward and reverse rates can be the same (REVersible) or allowed to vary (NONreversible). The available options are therefore\n";
+			message+="       IndRev, DepRev, IndNon, DepNon. IndNon and DepNon correspond to Pagel (1994) analyses (if state frequency is UNIFORM)\n";
 			message+="Freq: The probability of each state at the root can be based on the EMPIRICAL distribution at the tips, can be SET by the user\n";
 			message+="      (using the statevector command), can be OPTIMIZEd as part of the model, can be set to EQUILIBRIUM frequencies (the\n";
 			message+="      frequencies expected with the optimized rate matrix given infinitely-long branches), or can be set to be UNIFORM (equal).\n";
