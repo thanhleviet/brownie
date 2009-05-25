@@ -7215,9 +7215,24 @@ Char1:				Char2
 				}
 				
 				//Finally, we have our final matrix of rates. Now we just have to convert it to something ready for input to the DiscreteGeneralOptimization function
+				/*message="Input matrix:\n";
+				for (int i=0; i<char1numstates; i++) {
+					for (int j=0; j<char2numstates; j++) {
+						message+="\t(";
+						message+=i;
+						message+=",";
+						message+=j;
+						message+=")";
+					}
+				}*/
 				for (int i=0; i<char1numstates; i++) {
 					for (int j=0; j<char2numstates; j++) {
 						int rowstate=stateConversionMatrix[i][j];
+						message+="\n(";
+						message+=i;
+						message+=",";
+						message+=j;
+						message+=")";
 						//The above loops gives rows: ij=00, 01, 02, .. 0N, 10, 11, 12, ...1N, ...MN, where M and N are the the maximum state number for each char (so, if both traits are binary, M=N=1: highest state you can have is 1 (the other state is 0).
 						//Now, for each row, move across columns.
 						for (int k=0; k<char1numstates; k++) {
@@ -7263,7 +7278,22 @@ Char1:				Char2
 						}
 					}
 				}
+				
 				cout<<endl;
+				cout<<"temporaryratematassignvector";
+				for (int i=0; i<temporaryratematassignvector.size(); i++) {
+					cout<<" "<<temporaryratematassignvector[i];
+				}
+				cout<<endl;
+				
+				cout<<endl;
+				cout<<"temporaryratematfixedvector";
+				for (int i=0; i<temporaryratematfixedvector.size(); i++) {
+					cout<<" "<<temporaryratematfixedvector[i];
+				}
+				cout<<endl;
+				
+				cout<<"tempfreerateletterstring = "<<tempfreerateletterstring<<endl;
 				
 			freerateletterstring=tempfreerateletterstring;
 			ratematfixedvector.swap(temporaryratematfixedvector);
@@ -7366,12 +7396,12 @@ Char1:				Char2
 			sprintf(outputstring,"%14.6f",aicc);
 			message+=outputstring;
 			
-	/*		cout<<endl<<"output = (";
+			cout<<endl<<"output = (";
 			for (int i=0; i<output->size; i++) {
 					cout<<endl<<gsl_vector_get(output,i);
 			}
 			cout<<endl<<")"<<endl;
-			*/
+			
 			 vectorposition=0;
 			for (int i=0; i<char1numstates; i++) {
 				for (int j=0; j<char2numstates; j++) {
@@ -15924,7 +15954,7 @@ double BROWNIE::GetDiscreteCharLnL_gsl( const gsl_vector * variables, void *obj)
 	double temp;
 	temp= ((BROWNIE*)obj)->GetDiscreteCharLnL(variables);
 	if((gsl_isinf (temp))<0) {
-		temp=GSL_POSINF;
+		temp=BROWNIE_MAXLIKELIHOOD;
 	}
 	return temp;
 }
@@ -15939,7 +15969,7 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 		}
 	}
 	//double likelihood=GSL_POSINF;
-	double likelihood=DBL_MAX; //rather than an infinte value, use the maximum possible value, so numerical optimization doesn't fail
+	double likelihood=BROWNIE_MAXLIKELIHOOD; //rather than an infinte value, use the maximum possible value, so numerical optimization doesn't fail
 	negbounceparam=-1;
 	if (numberoffreeparameters>0) { //if the input vector has useful variables; this number is only zero in the case of some user models
 		if (gsl_vector_min(localvariables)<0) { //means we have a negative rate or state frequency if <0, so leave the likelihood set at a really bad number
@@ -16116,16 +16146,16 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 		for (int i=0; i<ancestralstatevector->size;i++) {
 			frequencysum+=gsl_vector_get(ancestralstatevector,i);
 		}
-//		if ((fabs(frequencysum-1.0)>DBL_EPSILON) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
-		if ((gsl_fcmp(frequencysum,1.0,DBL_EPSILON)!=0) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
+//		if ((fabs(frequencysum-1.0)>BROWNIE_EPSILON) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
+		if ((gsl_fcmp(frequencysum,1.0,BROWNIE_EPSILON)!=0) || gsl_vector_min(ancestralstatevector)<0 || gsl_vector_max(ancestralstatevector)>1) { //a way of constraining the search
 			if(detailedoutput) {
 				cout<<"\n\tHad wrong state frequency input, ancestralstatevector vector is ( ";
 				for (int i=0;i<ancestralstatevector->size;i++) {
 					cout<<gsl_vector_get(ancestralstatevector,i)<<" ";
 				}
 				cout<<") ";
-				if (gsl_fcmp(frequencysum,1.0,DBL_EPSILON)!=0) {
-					cout<<"[SUM ("<<frequencysum<<") NOT 1: Sum-1 = "<<fabs(frequencysum-1.0)<<", gsl_fcmp(frequencysum,1.0,DBL_EPSILON) = "<<gsl_fcmp(frequencysum,1.0,DBL_EPSILON)<<"] ";
+				if (gsl_fcmp(frequencysum,1.0,BROWNIE_EPSILON)!=0) {
+					cout<<"[SUM ("<<frequencysum<<") NOT 1: Sum-1 = "<<fabs(frequencysum-1.0)<<", gsl_fcmp(frequencysum,1.0,BROWNIE_EPSILON) = "<<gsl_fcmp(frequencysum,1.0,BROWNIE_EPSILON)<<"] ";
 				}
 				if (gsl_vector_min(ancestralstatevector)<0) {
 					cout<<"[MIN ("<<gsl_vector_min(ancestralstatevector)<<") < 0] ";
@@ -16136,7 +16166,7 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 				cout<<endl;
 			}
 			//likelihood=GSL_POSINF;
-			likelihood=DBL_MAX; //rather than an infinte value, use the maximum possible value, so numerical optimization doesn't fail
+			likelihood=BROWNIE_MAXLIKELIHOOD; //rather than an infinte value, use the maximum possible value, so numerical optimization doesn't fail
 
 			if (debugmode) {
 				cout<<"GetDiscreteCharLnL output (second return) is "<<likelihood<<endl;
@@ -16337,7 +16367,7 @@ gsl_vector * BROWNIE::LindyGeneralOptimization(int ChosenModel)
 
 gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 {
-	bestdiscretelikelihood=GSL_POSINF;
+	bestdiscretelikelihood=BROWNIE_MAXLIKELIHOOD;
 	bool globalbesthadfixedzerosorones=false;
 	int hitlimitscount=0;
 	//int numbercharstates=(discretecharacters->GetObsNumStates(discretechosenchar));
@@ -16532,10 +16562,10 @@ gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 					if(nonnegvariables) {
 						gsl_vector_set(roundx,i,exp(gsl_vector_get(roundx,i)));
 					}
-					if (gsl_vector_get(roundx,i)<8.0*DBL_EPSILON) {
+					if (gsl_vector_get(roundx,i)<8.0*BROWNIE_EPSILON) {
 						gsl_vector_set(roundx,i,0.0);
 					}
-					else if (fabs(1.0-gsl_vector_get(roundx,i))<8.0*DBL_EPSILON) {
+					else if (fabs(1.0-gsl_vector_get(roundx,i))<8.0*BROWNIE_EPSILON) {
 						gsl_vector_set(roundx,i,1.0);
 					}
 				}
@@ -16651,11 +16681,11 @@ gsl_vector * BROWNIE::DiscreteGeneralOptimization()
 				double mu_t=1.1;              /* damping factor for temperature */
 				double t_min=stoppingprecision;
 				gsl_vector *x = gsl_vector_calloc (np);
-				double lastlikelihood=GSL_POSINF;
+				double lastlikelihood=BROWNIE_MAXLIKELIHOOD;
 				int numTEststarts=50;
 				gsl_vector *initiallikelihoodscores=gsl_vector_calloc(numTEststarts);
 				for (int Tstartrep=0; Tstartrep<numTEststarts; Tstartrep++) { //this gives us an estimate of what a good starting T would be
-					lastlikelihood=GSL_POSINF;
+					lastlikelihood=BROWNIE_MAXLIKELIHOOD;
 					while(isinf(lastlikelihood)) {
 						for (int i=0; i<numberoffreerates; i++) {
 							gsl_vector_set (x,i,GSL_MIN(gsl_ran_exponential (r,0.5),gsl_ran_flat(r,0,1) )); //starting rate
