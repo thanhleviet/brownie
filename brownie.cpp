@@ -297,7 +297,7 @@ void BROWNIE::FactoryDefaults()
 	//optimalvalueslabels.clear();
 	gsl_vector *optimalTraitMeans = gsl_vector_calloc(1);
 	globalchosentaxset="ALL";
-    citationarray[0]=false;
+    citationarray[0]=true;
     maxnumspecies=100;
     minnumspecies=1;
 	minsamplesperspecies=3;
@@ -822,12 +822,12 @@ void BROWNIE::HandleHelp( NexusToken& token )
 	message += "\n  (simulate)       -> simulate discrete or continuous character matrices";
 	message += "\n  loss             -> estimate rates of binary character loss on branches";
 	message += "\n\nSpecies delimitation and  tree search:";
-	message += "\n  (hs)             -> perform a heuristic search";
-	message += "\n  [jackknife]      -> perform a jackknife search";
-	message += "\n  [exhaustive]     -> perform an exhaustive search";
+	message += "\n  hs               -> perform a heuristic search";
+	//message += "\n  [jackknife]      -> perform a jackknife search";
+	//message += "\n  [exhaustive]     -> perform an exhaustive search";
 	message += "\n  compare          -> compare triplet overlap for coalescent trees";
 	message += "\n  assign           -> assign samples to species";
-	message += "\n  (accuracy)       -> compute accuracy of reconstruction";
+	message += "\n  accuracy         -> compute accuracy of reconstruction";
 	message += "\n\nNumerical optimization settings:";
 	message += "\n  set              -> sets options";
     message += "\n  numopt           -> sets parameters for numerical optimization functions";	
@@ -1086,6 +1086,7 @@ void BROWNIE::HandleShowtree( NexusToken& token )
  */
 void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 {
+	citationarray[3]=true;
     nxsstring numbernexus;
     bool finishexecuting=true;
     for(;;)
@@ -1190,6 +1191,12 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
            // message+="\nSteepest     No|Yes                                  No";
 			//message+="\nExhaustive   No|Yes                                  No";
             message+="\nShowTries    No|Yes                                  ";
+            if (showtries) {
+				message+="Yes";
+			}
+			else {
+				message+="No";
+			}			
 			message+="\nCOAL:        No|Yes                                  ";
 			if (useCOAL) {
 				message+="Yes";
@@ -1197,7 +1204,7 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
 			else {
 				message+="No";
 			}
-			message+="\nMS:        No|Yes                                  ";
+			message+="\nMS:          No|Yes                                  ";
 			if (useMS) {
 				message+="Yes";
 			}
@@ -1230,7 +1237,8 @@ void BROWNIE::HandleHeuristicSearch( NexusToken& token )
            // message+="\nStatus: Output status of search to screen (and a log file, if open).";
            // message+="\nSteepest: Whether to look at all rearrangements and then take the best one or just take the first better one.";
 			message+="\nSubsample: How extensively to try taxon reassignments on leaf splits. \n\tA value of 1 means try all of the possible reassignments, \n\ta value of 2 means try the square root of all the possible assignments,\n\t3 means the cube root, etc. A higher number means a faster but less effective search.\n\tThe program won't let you try fewer than 10 assignments on average.";
-			message+="\nCOAL: Use Degnan's program COAL to optimize the likelihood of the species delimitation and tree rather than the semiparametric penalty function";
+			message+="\nMS: Use Hudson's program MS to simulate gene trees to estimate probabilities. MAKE SURE MS IS INSTALLED SOMEWHERE ACCESSIBLE TO BROWNIE.";
+			message+="\nCOAL: Use Degnan's program COAL to optimize the likelihood of the species delimitation and tree rather than the semiparametric penalty function. MAKE SURE MS IS INSTALLED SOMEWHERE ACCESSIBLE TO BROWNIE.";
 			message+="\nAIC_mode: When using COAL, use the 0: likelihood as the penalty term, 1: AIC value (k=number of species), 2: AICc with n=number of genes, 3: AICc with n=number of samples, 4: AICc with n=(number of genes) * (number of samples)";
 			message+="\nGridWidth, GridSize, MaxRecursions all affect grid search";
 			message+="\nBranch_export: if set to 0, returns a single estimate of the best branch lengths on the species tree. If set to 1, returns a table of equally-good branch lengths. If set to 2, returns a table of the best and neighboring branch lengths, suitable for doing a contour plot of score versus branch lengths";
@@ -5786,24 +5794,24 @@ void BROWNIE::PrintCitations()
 {
 	message="Papers whose methods you have used so far in this session:\n[you should certainly read and probably cite them]";
 	if (citationarray[0]) {
-		message+="\n\nCitation for this program and for rate comparison methods:\n   O'Meara, B.C., C. Ane, M.J. Sanderson, and P.C. Wainwright. 2006. \"Testing for different rates of continuous trait evolution using likelihood.\" Evolution 60(5): 922-933. http://www.treetapper.org/reference/609";
+		message+="\n\nCitation for this program and for rate comparison methods:\n   O'Meara, B.C., C. Ane, M.J. Sanderson, and P.C. Wainwright. 2006. \"Testing for different rates of continuous trait evolution using likelihood.\" Evolution 60(5): 922-933.";
 	}
 	if (citationarray[1]) {
-		message+="\n\nCitation for constant mean, constant pull OU and ACDC transformations (d and g parameters, respectively):\n   Blomberg, S.P., T. Garland, Jr., and A.R. Ives. 2003. \"Testing for phylogenetic signal in comparative data: Behavioral traits are more labile.\" Evolution 57(4) 717-745. http://www.treetapper.org/reference/686";
+		message+="\n\nCitation for constant mean, constant pull OU and ACDC transformations (d and g parameters, respectively):\n   Blomberg, S.P., T. Garland, Jr., and A.R. Ives. 2003. \"Testing for phylogenetic signal in comparative data: Behavioral traits are more labile.\" Evolution 57(4) 717-745.";
 	}
-				if (citationarray[2]) {
-					message+="\n\nCitations for Ornstein-Uhlenbeck model with multiple means but one attraction and rate parameter:";
-					message+="\n\n   Butler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695. http://www.treetapper.org/reference/677";
-					message+="\n\n   Hansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351. http://www.treetapper.org/reference/718";
-					message+="\n\n   O'Meara, B.C. Brownie v2.0b8. Distributed by the author at http://www.brianomeara.info/brownie";
+	if (citationarray[2]) {
+		message+="\n\nCitations for Ornstein-Uhlenbeck model with multiple means but one attraction and rate parameter:";
+		message+="\n\n   Butler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695.";
+		message+="\n\n   Hansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351.";
+		message+="\n\n   O'Meara, B.C. Brownie v2.1. Distributed by the author at http://www.brianomeara.info/brownie";
 				}
 	if (citationarray[3]) {
 		message+="\n\nCitation for species delimitation approach:";
-		message+="\n\n   O'Meara, B.C. MS in prep \"Species delimitation using multiple gene trees\"";
+		message+="\n\n   O'Meara, B.C. 2009. \"New Heuristic Methods for Joint Species Delimitation and Species Tree Inference\" Systematic Biology. doi: 10.1093/sysbio/syp077";
 	}
 	if (citationarray[4]) {
 		message+="\n\nCitation for loss only model:";
-		message+="\n\n   McBride, C.S., J.R. Arguello, B.C. O'Meara 2007 \"Five Drosophila Genomes Reveal Nonneutral Evolution and the Signature of Host Specialization in the Chemoreceptor Superfamily\" Genetics: 177(3): 1395-1395. http://www.treetapper.org/reference/2098";
+		message+="\n\n   McBride, C.S., J.R. Arguello, B.C. O'Meara 2007 \"Five Drosophila Genomes Reveal Nonneutral Evolution and the Signature of Host Specialization in the Chemoreceptor Superfamily\" Genetics: 177(3): 1395-1395.";
 	}
 	PrintMessage();
 }
@@ -12415,7 +12423,8 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
     Add( characters );
 	Add( characters2 );
     Add( this );
-    cout<<endl<<endl<<endl<<"                               Brownie V2.1 PREVIEW"<<endl;
+    cout<<endl<<endl<<endl;
+    cout<<"                                 Brownie V2.1"<<endl;
 	cout<<"                          Character evolution models,"<<endl;
 	cout<<"                             species delimitation,"<<endl; 
 	cout<<"                               and tree search"<<endl<<endl;
@@ -12430,8 +12439,6 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
     cout<<"                  and \"commandname ?\" for help for each command."<<endl<<endl;
     cout<<"                       Compiled on "<<__DATE__<<" at "<<__TIME__<<endl;
 	cout<<"                         Using GSL version "<<GSL_VERSION<<endl<<endl;
-	cout<<"          PLEASE CHECK WITH BRIAN O'MEARA BEFORE PUBLISHING WITH THIS VERSION"<<endl;
-	cout<<"              (not all methods have been peer-reviewed and published yet)"<<endl<<endl;
 	
     quit_now = false;
     if (inputfilegiven) {
