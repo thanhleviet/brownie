@@ -54,6 +54,7 @@ public:
     CharactersBlock* characters;
 	CharactersBlock2* characters2;
 	CharactersBlock* discretecharacters;
+	bool discretecharloaded;
 	CharactersBlock* continuouscharacters;
     int chosentree;
     int chosenchar;
@@ -215,6 +216,7 @@ public:
     void HandleBlocks( NexusToken& token );
     void HandleDebug( NexusToken& token );
 	void HandleNoQuitOnErr( NexusToken& token );
+	void HandleQuitOnErr( NexusToken& token );
 	double AIC(double neglnL, int K);
 	double AICc(double neglnL, int K, int N);
     void HandleDebugOptimization (NexusToken & token);

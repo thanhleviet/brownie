@@ -228,7 +228,7 @@ void BROWNIE::FactoryDefaults()
     logf_open = false;
     echof_open=false;
     quit_now = false;
-	quit_onerr = true;
+	quit_onerr = false;
     message = "";
     next_command[0] = '\0';
     gslseedtoprint=time(NULL);
@@ -238,6 +238,8 @@ void BROWNIE::FactoryDefaults()
     taxa = NULL;
     assumptions = NULL;
     characters = NULL;
+    discretecharacters = NULL;
+    discretecharloaded = false;
     chosenchar=1;
 	discretechosenchar=0; //starts at index=0;
 	ratematfixedvector.push_back(0); 
@@ -574,6 +576,7 @@ void BROWNIE::HandleExecuteCmdLine(nxsstring fn)
 				discretecharacters=characters;
 				numbercharstates=discretecharacters->GetMaxObsNumStates();	
 				localnumbercharstates=numbercharstates;
+				discretecharloaded=true;
 				//cout<<"Found discrete characters\n";
 			}
 		}
@@ -587,6 +590,7 @@ void BROWNIE::HandleExecuteCmdLine(nxsstring fn)
 				discretecharacters=characters2;
 				numbercharstates=discretecharacters->GetMaxObsNumStates();	
 				localnumbercharstates=numbercharstates;
+				discretecharloaded=true;
 				//cout<<"Found discrete characters\n";
 			}
 		}
@@ -709,6 +713,7 @@ void BROWNIE::HandleExecute( NexusToken& token )
 					discretecharacters=characters;
 					numbercharstates=discretecharacters->GetMaxObsNumStates();	
 					localnumbercharstates=numbercharstates;
+					discretecharloaded=true;
 					//cout<<"Found discrete characters\n";
 				}
 			}
@@ -722,6 +727,7 @@ void BROWNIE::HandleExecute( NexusToken& token )
 					discretecharacters=characters2;
 					numbercharstates=discretecharacters->GetMaxObsNumStates();	
 					localnumbercharstates=numbercharstates;
+					discretecharloaded=true;
 					//cout<<"Found discrete characters\n";
 				}
 			}
@@ -972,6 +978,33 @@ void BROWNIE::HandleNoQuitOnErr( NexusToken& token )
         }
     }
     message="Will not quit on error\n";
+    PrintMessage();
+}
+
+/**
+* @method HandleNoQuitOnErr [void:protected]
+ * @param token [NexusToken&] the token used to read from in
+ * @throws XNexus
+ *
+ */
+void BROWNIE::HandleQuitOnErr( NexusToken& token )
+{
+    for(;;)
+    {
+        token.GetNextToken();
+		
+        if( token.Equals(";") ) {
+            quit_onerr=true;
+            break;
+        }
+        else {
+            errormsg = "Unexpected keyword (";
+            errormsg += token.GetToken();
+            errormsg += ") encountered reading QuitOnErr command";
+            throw XNexus( errormsg, token.GetFilePosition(), token.GetFileLine(), token.GetFileColumn() );
+        }
+    }
+    message="Will instantly quit on error\n";
     PrintMessage();
 }
 
@@ -5932,11 +5965,12 @@ void BROWNIE::HandleChoose( NexusToken& token )
                 message+="[no continuous characters loaded]";
             }
 			message+="\nDiscrete     <integer-value>                      ";
-            if (discretecharacters->GetNChar()>0) {
-                message+=discretechosenchar+1;
+            if (!discretecharloaded) {
+                message+="[no discrete characters loaded]";
+                
             }
             else {
-                message+="[no discrete characters loaded]";
+                message+=discretechosenchar+1;
             }
 			
             message+="\n\n";
