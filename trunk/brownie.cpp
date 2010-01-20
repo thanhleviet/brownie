@@ -5836,7 +5836,7 @@ void BROWNIE::PrintCitations()
 		message+="\n\nCitations for Ornstein-Uhlenbeck model with multiple means but one attraction and rate parameter:";
 		message+="\n\n   Butler, M.A., King, A.A. 2004. \"Phylogenetic comparative analysis: a modeling approach for adaptive evolution.\" American Naturalist. 164(6):683-695.";
 		message+="\n\n   Hansen, T.F., 1997. \"Stabilizing selection and the comparative analysis of adaptation.\" Evolution, 51:1341-1351.";
-		message+="\n\n   O'Meara, B.C. Brownie v2.1. Distributed by the author at http://www.brianomeara.info/brownie";
+		message+="\n\n   O'Meara, B.C. Brownie v2.1.1. Distributed by the author at http://www.brianomeara.info/brownie";
 				}
 	if (citationarray[3]) {
 		message+="\n\nCitation for species delimitation approach:";
@@ -12458,7 +12458,7 @@ void BROWNIE::RunCmdLine(bool inputfilegiven, nxsstring fn)
 	Add( characters2 );
     Add( this );
     cout<<endl<<endl<<endl;
-    cout<<"                                 Brownie V2.1"<<endl;
+    cout<<"                                 Brownie V2.1.1"<<endl;
 	cout<<"                          Character evolution models,"<<endl;
 	cout<<"                             species delimitation,"<<endl; 
 	cout<<"                               and tree search"<<endl<<endl;
