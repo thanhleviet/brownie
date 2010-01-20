@@ -1,0 +1,14 @@
+Small Nexus tree file parser code
+
+M.J. Sanderson 10/12/04
+
+This directory is a slightly updated version of old code to use lex and yacc to parse a nexus
+tree file. At the moment it reads input on STDIN. It requires flex and yacc under OSX. Flex is different
+from lex in how it reads from strings, and I haven't made the relevant changes yet to do so. See p. 156 in
+the O'Reilly book on Lex & Yacc.
+
+The lexer is called nexusLexer.l; the parser is called nexusParser.y; and my tree code is in mySmallTreeLib.c.
+
+The code doesn't do anything at the moment other than parse the file and build a linked list data structure for the tree,
+and then traverse it and print some stuff.
+
