@@ -7364,7 +7364,7 @@ Char1:				Char2
 								tmessage+=i;
 								tmessage+=",";
 								tmessage+=j;
-								tmessage+=")_(";
+								tmessage+=")_->_(";
 								tmessage+=k;
 								tmessage+=",";
 								tmessage+=l;
@@ -7459,7 +7459,7 @@ Char1:				Char2
 								message+=i;
 								message+=",";
 								message+=j;
-								message+=")_(";
+								message+=")_->_(";
 								message+=k;
 								message+=",";
 								message+=l;
@@ -16002,6 +16002,9 @@ double BROWNIE::GetDiscreteCharLnL_gsl( const gsl_vector * variables, void *obj)
 
 double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 {
+	if (debugmode) {
+		cout<<endl<<endl<<"------   Using GetDiscreteCharLnL -------"<<endl<<endl;
+	}
 	gsl_vector *localvariables=gsl_vector_calloc(variables->size);
 	gsl_vector_memcpy(localvariables,variables);
 	if(nonnegvariables) { //N-M can get negative values for parameters. This is fine usually, but not with rates and frequencies, which must be nonnegative. Solution? NM variable x=log(true variable); true variable Y=exp(NM variable)
@@ -16085,6 +16088,9 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 			gsl_matrix_set(RateMatrix,i,i,-1.0*ratesum);
 		}
 		if (discretechosenstatefreqmodel==3) { //Calculate Equilibrium state freqs by just getting a Pmatrix (P=exp(QT)) for a really big time
+			if (debugmode) {
+				cout<<"now computing equilibrium state frequencies"<<endl;
+			}
 			gsl_matrix* Pmatrix=gsl_matrix_calloc(localnumbercharstates,localnumbercharstates);
 			gsl_matrix* StartFreqs=gsl_matrix_calloc(1,localnumbercharstates);
 			gsl_matrix_set_all (StartFreqs, 1.0/localnumbercharstates); //start with equal freqs
@@ -16113,9 +16119,12 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 			gsl_matrix_free(EndFreqs);
 			gsl_matrix_free(EndFreqs2);
 		}
-		else {
+		else {	
 			for (int i=0; i<localnumbercharstates; i++) { //do ancestralstatevector for freqs
 				if (discretechosenstatefreqmodel==1) {
+					if (debugmode) {
+						cout<<"now setting uniform state frequencies"<<endl;
+					}	
 					//Uniform
 					//gsl_vector_set(ancestralstatevector,i,1.0/localnumbercharstates);
 					if (i<(localnumbercharstates-1)) {
@@ -16130,6 +16139,9 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 					}
 				}
 				else if (discretechosenstatefreqmodel==2) {
+					if (debugmode) {
+						cout<<"now setting state frequencies based on empirical frequencies for this character"<<endl;
+					}	
 					double frequency=0.0;
 					for (int j=0;j<ntax;j++) {
 						if (discretecharacters->GetInternalRepresentation(j,discretechosenchar)==i) {
@@ -16139,6 +16151,10 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 					gsl_vector_set(ancestralstatevector,i,frequency);
 				}
 				else if (discretechosenstatefreqmodel==4) {
+					if (debugmode) {
+						cout<<"now setting state frequencies based on optimal frequencies for this character"<<endl;
+					}	
+
 					if (debugmode) {
 						cout<<"i="<<i<<" variables->size="<<localvariables->size<<" vectorposition="<<vectorposition<<endl;
 					}
@@ -16159,6 +16175,10 @@ double BROWNIE::GetDiscreteCharLnL(const gsl_vector * variables)
 				}
 				else if (discretechosenstatefreqmodel==5) {
 					//user
+					if (debugmode) {
+						cout<<"now setting state frequencies based on user-specified frequencies for this character"<<endl;
+					}	
+
 					if (userstatefreqvector.size()!=localnumbercharstates) {
 						errormsg="The current (possibly default) vector of user-specified state frequencies ";
 						errormsg+="\nwith size ";
@@ -17533,7 +17553,7 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 						}
 						(stateprobatnodes[currentnode]).push_back(probofstatej);
 						if (debugmode) {
-							cout<<"CalculateDiscreteCharLnL: j = "<<j<<", probofstatej = "<<probofstatej<<", -ln(probofstatej) = "<<-1.0*probofstatej.getLn()<<endl<<endl;
+							cout<<"CalculateDiscreteCharLnL: j = "<<j<<", probofstatej = "<<probofstatej.getMantissa()<<" x 10^"<<probofstatej.getExponent()<<", -ln(probofstatej) = "<<-1.0*probofstatej.getLn()<<endl<<endl;
 						}
 						
 					}
@@ -17577,7 +17597,7 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 						totalprob+=(stateprobatnodes[currentnode])[i];
 					}
 					cout<<" mantissa="<<totalprob.getMantissa()<<"total = "<<totalprob<<endl;
-					assert(totalprob.getMantissa()>0);
+					//assert(totalprob.getMantissa()>0);
 				}
 				currentnode = n.next();
 				
@@ -17601,6 +17621,11 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 		}
 	}
 	discretechosenchar=olddiscretechosenchar;
+	if (1==isnan(neglnL)) { //this is not a number, which makes optimization difficult
+		message="\nWarning: The negative ln likelihood in CalculateDiscreteCharLnL was NaN, so a very large value (BROWNIE_MAXLIKELIHOOD) was returned instead.\n";
+		PrintMessage();
+		neglnL=BROWNIE_MAXLIKELIHOOD ;
+	}
 	return neglnL;
 }
 
@@ -17836,6 +17861,10 @@ gsl_matrix * BROWNIE::ComputeTransitionProb(gsl_matrix *RateMatrix, double brlen
 	for (int i=0;i<dimension;i++) {
 		for (int j=0;j<dimension;j++) {
 			gsl_matrix_set(transitionmatrix,i,j,GSL_REAL(gsl_matrix_complex_get(transitionmatrixcomplex,i,j)));
+			/*if (1==isnan(gsl_matrix_get(transitionmatrix,i,j))) {
+				message="\nWarning: Got NaN in ComputeTransitionProb\n";
+				PrintMessage();
+			} */
 		}
 	}
 	gsl_matrix_complex_free(transitionmatrixcomplex);
