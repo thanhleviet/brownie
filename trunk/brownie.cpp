@@ -17622,9 +17622,21 @@ double BROWNIE::CalculateDiscreteCharLnL(gsl_matrix * RateMatrix, gsl_vector * a
 	}
 	discretechosenchar=olddiscretechosenchar;
 	if (1==isnan(neglnL)) { //this is not a number, which makes optimization difficult
-		message="\nWarning: The negative ln likelihood in CalculateDiscreteCharLnL was NaN, so a very large value (BROWNIE_MAXLIKELIHOOD) was returned instead.\n";
-		PrintMessage();
+		if (debugmode) {
+			message="\nWarning: The negative ln likelihood in CalculateDiscreteCharLnL was NaN, so a very large value (BROWNIE_MAXLIKELIHOOD) was returned instead.\n";
+			PrintMessage();
+		}
 		neglnL=BROWNIE_MAXLIKELIHOOD ;
+	}
+	else if (neglnL<0) {
+		if (debugmode) {
+			message="\nWarning: The negative ln likelihood in CalculateDiscreteCharLnL was less than zero (";
+			message+=neglnL;
+			message+="), so a very large value (BROWNIE_MAXLIKELIHOOD) was returned instead.\n";
+			PrintMessage();
+		}
+		neglnL=BROWNIE_MAXLIKELIHOOD ;
+
 	}
 	return neglnL;
 }
