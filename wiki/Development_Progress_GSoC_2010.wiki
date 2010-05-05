@@ -1,10 +1,10 @@
 #summary Tracking updates
 
-= Introduction =
+= General =
 
 More information coming soon.
 
-= Details =
+= Updates =
 
 *05/05/2010*
 - Created this page
