@@ -1,8 +1,22 @@
 #summary Tracking updates
 
-= General =
+= Google Summer of Code Project =
 
-More information coming soon.
+==Objective==
+The main goal of this project will be the integration of important phylogenetic tools for ancestral state reconstruction and rate testing (via Brownie) into a commonly used scripting environment (R).  As R is a cross-platform scripting environment for which there are currently external packages to read-in and manipulate genetic and phylogenetic data.  R is an ideal place to port the functions contained in Brownie due to it's robust linkage to C/C++ (innately and through external packages) and because of it's potential to act as a staging area for all steps in phylogenetic data analysis, from reading in genetic data to running analyses to plotting the results.
+
+
+==Project Executors==
+ * [mailto:conrad.stack@gmail.com Conrad Stack ]
+ * [http://www.webpages.uidaho.edu/~lukeh/ Luke Harmon ]
+ * [http://.brianomeara.info/ Brian O'Meara ]
+
+==Comments==
+Anyone please feel free to contact me (Conrad) with any suggestions for improvement or general comments.  Thanks!
+----
+
+
+
 
 = Updates =
 
@@ -15,10 +29,10 @@ More information coming soon.
 ----
 ===05/17/2010===
  * Tasks:
-  *Setup build environment for brownie and related R-package on windows, linux, and mac boxes
-  * Background reading 
+  * Setup build environment for brownie and related R-package on windows, linux, and mac boxes
+  * Background reading {{{[1]}}}
   * Setup [http://www.conradstack.info project blog]
-  * Step through brownie to get familiar with project structure and coding style.
+  * Step through brownie to get familiar with project structure and coding style. {{{[2]}}}
 
 
  * Links:
