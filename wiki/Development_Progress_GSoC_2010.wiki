@@ -12,9 +12,9 @@ The main goal of this project will be the integration of important phylogenetic 
  * [http://.brianomeara.info/ Brian O'Meara ]
 
 ==Final thoughts==
-Anyone please feel free to contact me (conrad.stack@gmail) with any suggestions for improvement or general comments.  Thanks!
+Anyone please feel free to contact me (conrad.stack@gmail) with any suggestions for improvement or general comments.  
 <br><br>
-Also check the [http://www.conradstack.info project blog] for exciting technical updates and random thoughts in near-real time.
+Also check the [http://www.conradstack.info project blog] for exciting technical updates and random thoughts, displaying in near-real time!  
 
 <br><br>
 
