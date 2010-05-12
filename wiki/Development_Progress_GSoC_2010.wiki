@@ -9,27 +9,21 @@ More information coming soon.
 ==Week of==
 
 ===05/05/2010===
-* Tasks:
-- Created this page
+ * Tasks:
+ - Created this page
 
 ----
 ===05/17/2010===
-* Tasks:
-
-- Setup build environment for brownie and related R-package on windows, linux, and mac boxes
- 
-- Background reading 
-
-- Setup [http://www.conradstack.info project blog]
-
-- Step through brownie to get familiar with project structure and coding style.
+ * Tasks:
+  *Setup build environment for brownie and related R-package on windows, linux, and mac boxes
+  * Background reading 
+  * Setup [http://www.conradstack.info project blog]
+  * Step through brownie to get familiar with project structure and coding style.
 
 
-* Links:
-
-# [http://www.amazon.com/Computational-Molecular-Evolution-Oxford-Ecology/dp/0198567022/ref=sr_1_1?ie=UTF8&s=books&qid=1273644680&sr=8-1 Computational Molecular Evolution]
-
-# [http://bodegaphylo.wikispot.org/Morphological_Diversification_and_Rates_of_Evolution Brownie Tutorial]
+ * Links:
+  # [http://www.amazon.com/Computational-Molecular-Evolution-Oxford-Ecology/dp/0198567022/ref=sr_1_1?ie=UTF8&s=books&qid=1273644680&sr=8-1 Computational Molecular Evolution]
+  # [http://bodegaphylo.wikispot.org/Morphological_Diversification_and_Rates_of_Evolution Brownie Tutorial]
 
 
 
