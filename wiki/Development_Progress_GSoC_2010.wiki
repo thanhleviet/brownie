@@ -7,12 +7,14 @@ The main goal of this project will be the integration of important phylogenetic 
 
 
 ==Project Executors==
- * [mailto:conrad.stack@gmail.com Conrad Stack ]
+ * [http://www.conradstack.info Conrad Stack ] 
  * [http://www.webpages.uidaho.edu/~lukeh/ Luke Harmon ]
  * [http://.brianomeara.info/ Brian O'Meara ]
 
 ==Final thoughts==
-Anyone please feel free to contact me (Conrad) with any suggestions for improvement or general comments.  Thanks!
+Anyone please feel free to contact me (conrad.stack@gmail) with any suggestions for improvement or general comments.  Thanks!
+<br><br>
+Also check the [http://www.conradstack.info project blog] for exciting technical updates and random thoughts in near-real time.
 
 <br><br>
 
