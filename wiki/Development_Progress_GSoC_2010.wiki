@@ -3,7 +3,7 @@
 = Google Summer of Code Project =
 ----
 ==Objective==
-The main goal of this project will be the integration of important phylogenetic tools for ancestral state reconstruction and rate testing (via Brownie) into a commonly used scripting environment (R).  As R is a cross-platform scripting environment for which there are currently external packages to read-in and manipulate genetic and phylogenetic data.  R is an ideal place to port the functions contained in Brownie due to it's robust linkage to C/C++ (innately and through external packages) and because of it's potential to act as a staging area for all steps in phylogenetic data analysis, from reading in genetic data to running analyses to plotting the results.
+The main goal of this project will be the integration of important phylogenetic tools for ancestral state reconstruction and rate testing (via Brownie) into a commonly used scripting environment (R).  As R is a cross-platform scripting environment for which there are currently external packages to read-in and manipulate genetic and phylogenetic data.  R is an ideal place to port the functions contained in Brownie due to its robust linkage to C/C++ (innately and through external packages) and because of its potential to act as a staging area for all steps in phylogenetic data analysis, from reading in genetic data to running analyses to plotting the results.
 
 
 ==Project Executors==
