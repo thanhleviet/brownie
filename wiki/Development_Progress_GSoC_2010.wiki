@@ -59,7 +59,7 @@ Also check the [http://www.conradstack.info project blog] for exciting technical
 
 ===05/31/2010===
  * R Brownie compilation:
-  * Complete Brownie compilation through R
+  * Complete Brownie compilation through R (excluding newer confidence interval tests)
   * Hard code tests (and test files) which run basic brownie functions (testing for runtime errors)
  * R-Brownie interface:
   * Pass information from phylobase to C++
@@ -69,6 +69,31 @@ Also check the [http://www.conradstack.info project blog] for exciting technical
   * Begin extensive runtime tests of confidence interval tests
 
 
+----
+
+===06/07/2010===
+ * R Brownie compilation:
+  * Hard code tests for confidence interval finding. 
+ * R-Brownie interface:
+  * Define stubs for functions that will need to included in R package
+   * Discuss final list with Luke, Brian
+   * Initial ideas:
+    * Read in or specify character data
+    * Read in from csv or Excel file
+    * Read in from Nexus file
+    * Read in or specify set of trees
+    * Read in set of posterior trees (with weights!) from BEAST, MrBayes, etc.
+    * Read in or specify directly the nexus files, SIMMAP files to be used
+    * Collate all necessary elements into temporary nexus file
+    * Specify rate model
+    * Specify output file
+    * Check for necessary elements (taxa, characters, trees, assumptions)
+    * Run ratetest (censored, uncensored)
+    * Run ancestral state reconstruction    
+    * Generic functions (S4 style)
+  * Generate documentation files (latex)
+ * Brownie additions
+  * Finish any debugging that is necessary
 
 
 
