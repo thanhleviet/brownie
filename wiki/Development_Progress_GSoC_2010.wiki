@@ -24,13 +24,13 @@ Also check the [http://www.conradstack.info project blog] for exciting technical
 Note:  The initial project proposal can be seen [http://docs.google.com/Doc?docid=0AcvZ2biv57wNZHpnZmI0c18xMDJjNHo2Y3JmaA&hl=en here].  The development progress described below will roughly follow this, but may deviate sharply if our strategy changes regarding how the implementation should be done.
 
 ----
-==Week of==
 
 ===05/05/2010===
  * Tasks:
  - Created this page
 
 ----
+
 ===05/17/2010===
  * Tasks:
   * Setup build environment for brownie and related R-package on windows, linux, and mac boxes
@@ -43,6 +43,7 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
   # [http://www.amazon.com/Computational-Molecular-Evolution-Oxford-Ecology/dp/0198567022/ref=sr_1_1?ie=UTF8&s=books&qid=1273644680&sr=8-1 Computational Molecular Evolution]
   # [http://bodegaphylo.wikispot.org/Morphological_Diversification_and_Rates_of_Evolution Brownie Tutorial]
 ----
+
 
 ===05/24/2010===
  * Add Rpack to brownie source branch
@@ -59,6 +60,7 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
   * More streamlined Makefile.in and Makefile.win for compiling Brownie source.
 ----
 
+
 ===05/31/2010===
  * R Brownie compilation:
   * Complete Brownie compilation through R (excluding newer confidence interval tests)
@@ -70,8 +72,8 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
  * Brownie additions:
   * Begin extensive runtime tests of confidence interval tests
 
-
 ----
+
 
 ===06/07/2010===
  * R Brownie compilation:
@@ -96,4 +98,3 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
   * Generate documentation files (latex)
  * Brownie additions
   * Finish any debugging that is necessary
-
