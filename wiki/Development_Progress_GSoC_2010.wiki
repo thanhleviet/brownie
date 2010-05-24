@@ -9,7 +9,7 @@ The main goal of this project will be the integration of important phylogenetic 
 ==Project Executors==
  * [http://www.conradstack.info Conrad Stack ] 
  * [http://www.webpages.uidaho.edu/~lukeh/ Luke Harmon ]
- * [http://.brianomeara.info/ Brian O'Meara ]
+ * [http://www.brianomeara.info/ Brian O'Meara ]
 
 ==Final thoughts==
 Anyone please feel free to contact me (conrad.stack@gmail) with any suggestions for improvement or general comments.  
@@ -40,15 +40,35 @@ Also check the [http://www.conradstack.info project blog] for exciting technical
  * Links:
   # [http://www.amazon.com/Computational-Molecular-Evolution-Oxford-Ecology/dp/0198567022/ref=sr_1_1?ie=UTF8&s=books&qid=1273644680&sr=8-1 Computational Molecular Evolution]
   # [http://bodegaphylo.wikispot.org/Morphological_Diversification_and_Rates_of_Evolution Brownie Tutorial]
-
-
-
 ----
-===05/17/2010===
-
-
 
 ===05/24/2010===
-
+ * Add Rpack to brownie source branch
+  * Add configuration script which copies current Brownie build into Rpack, builds R package
+ * Add phylobase, Rcpp requirements to Rpack
+  * R functions which checks for singleton nodes and convert them to SIMMAP format (supported by Brownie)
+  * R functions which take sufficient data (tree, taxsets, data, characters) and outputs them to a Brownie-compatible nexus format
+   * NOTE: This suite of data will be streamed to Brownie
+ * Stubs in Brownie to calculate confidence intervals
+  * Discuss with Brian how these should be calculated
+  * Determine input/output types
+ * Build Brownie source under R compilation process with Rpack subdir
+  * Add new configuration requirements
+  * More streamlined Makefile.in and Makefile.win for compiling Brownie source.
+----
 
 ===05/31/2010===
+ * R Brownie compilation:
+  * Complete Brownie compilation through R
+  * Hard code tests (and test files) which run basic brownie functions (testing for runtime errors)
+ * R-Brownie interface:
+  * Pass information from phylobase to C++
+  * Pass tree, data from C++ to phylobase
+   * Conversion might be able to be done by Rcpp using as() function, but could also be done in R
+ * Brownie additions:
+  * Begin extensive runtime tests of confidence interval tests
+
+
+
+
+
