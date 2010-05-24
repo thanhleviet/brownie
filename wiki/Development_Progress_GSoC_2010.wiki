@@ -20,7 +20,9 @@ Also check the [http://www.conradstack.info project blog] for exciting technical
 
 
 
-= Updates =
+= Development progress (updated weekly) =
+Note:  The initial project proposal can be seen [http://docs.google.com/Doc?docid=0AcvZ2biv57wNZHpnZmI0c18xMDJjNHo2Y3JmaA&hl=en here].  The development progress described below will roughly follow this, but may deviate sharply if our strategy changes regarding how the implementation should be done.
+
 ----
 ==Week of==
 
@@ -94,6 +96,4 @@ Also check the [http://www.conradstack.info project blog] for exciting technical
   * Generate documentation files (latex)
  * Brownie additions
   * Finish any debugging that is necessary
-
-
 
