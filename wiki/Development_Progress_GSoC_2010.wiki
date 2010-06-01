@@ -66,9 +66,12 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
   * Complete Brownie compilation through R (excluding newer confidence interval tests)
   * Hard code tests (and test files) which run basic brownie functions (testing for runtime errors)
  * R-Brownie interface:
+  * R functions which take sufficient data (tree, taxsets, data, characters) and outputs them to a Brownie-compatible nexus format
   * Pass information from phylobase to C++
   * Pass tree, data from C++ to phylobase
    * Conversion might be able to be done by Rcpp using as() function, but could also be done in R
+  * Stubs for desired functions in R
+   * Associated stubs for documentation
  * Brownie additions:
   * Begin extensive runtime tests of confidence interval tests
 
