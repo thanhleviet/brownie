@@ -101,3 +101,14 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
   * Generate documentation files (latex)
  * Brownie additions
   * Finish any debugging that is necessary
+----
+
+
+
+===06/14/2010===
+ * Debugging of confidence interval code:
+  * Confidence interval comparisons with other phylogenetic packages (e.g. HYPHY, BEAST)
+ * R-Brownie interface:
+  * Begin R coding to pass data to C++ interface and retrieve results
+  * Unit tests for each major function
+  * Document (latex) as progress is made on each function
