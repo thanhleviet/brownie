@@ -109,6 +109,39 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
  * Debugging of confidence interval code:
   * Confidence interval comparisons with other phylogenetic packages (e.g. HYPHY, BEAST)
  * R-Brownie interface:
+  * C++ classes for handling data passage between R package and libBrownie
   * Begin R coding to pass data to C++ interface and retrieve results
   * Unit tests for each major function
   * Document (latex) as progress is made on each function
+ * R front-end
+  * Plan out list of methods and classes to add.
+  * Plan out which features of ape and/or phylobase to use
+----
+
+
+
+
+===06/21/2010===
+ * Debugging of confidence interval code:
+  * Confidence interval comparisons with other phylogenetic packages (e.g. HYPHY, BEAST)
+ * R-Brownie interface:
+  * Thorough testing of the interface functions
+  * Choose examples to eventually become vignettes
+ * R front-end
+  * Begin writing method and class code
+  * Start latex documentation for each function
+----
+
+
+
+===06/28/2010===
+ * Debugging of confidence interval code:
+  * Confidence interval comparisons with other phylogenetic packages (e.g. HYPHY, BEAST)
+ * R-Brownie interface:
+  * Should be nearly complete, but will still have bugs
+ * R front-end
+  * Continue writing method and class code
+  * Continue documentation
+  * Begin vignettes
+ * Start and complete formal mid-term evaluation
+----
