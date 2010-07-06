@@ -145,3 +145,17 @@ Note:  The initial project proposal can be seen [http://docs.google.com/Doc?doci
   * Begin vignettes
  * Start and complete formal mid-term evaluation
 ----
+
+
+===07/5/2010===
+ * Start/Finish prototype of confidence interval additions
+ * Streamline brownie interface
+  * Add more needed functions to dlInterface class
+  * Rework package to utilize Rcpp Modules (remove wrapper from dlInterface) 
+ * Add stubs for ALL R functions that will be included in first release
+ * Started midterm review
+ * Work on Latex documentation
+----
+
+
+
