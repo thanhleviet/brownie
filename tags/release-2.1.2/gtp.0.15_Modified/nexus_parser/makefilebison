@@ -1,0 +1,45 @@
+# This code must have access to my my_structures library module; change following location if necessary
+# The module is called libmy_structures.a and is located in the following directory, along with the various
+# include files
+
+INCLUDE = ../my_structures
+LIB     = ../my_structures
+#INCLUDE = /Users/sanderm/MyDOCUMENTS/CODE/my_structures
+#LIB     = /Users/sanderm/MyDOCUMENTS/CODE/my_structures
+
+LEX = flex -l -i
+YACC = bison -y
+
+CC = gcc -g
+
+
+libnp.a nexusParserTrees: y.tab.o lex.yy.o main.o mySmallTreeLib.o yywrap.o
+	$(CC) -I ${INCLUDE} -L${LIB} -o nexusParserTrees  mySmallTreeLib.o y.tab.o lex.yy.o yywrap.o main.o -lfl -lmy_structures
+	ar  -r libnp.a *.o
+	ranlib libnp.a
+#libtool -static -o libnp.a *.o
+
+main.o:main.c
+	$(CC) -I ${INCLUDE} -c main.c
+
+mySmallTreeLib.o:mySmallTreeLib.c mySmallTreeLib.h
+	$(CC) -I ${INCLUDE} -c mySmallTreeLib.c 
+
+yywrap.o:yywrap.c
+	$(CC) -I ${INCLUDE} -c yywrap.c
+
+lex.yy.o: lex.yy.c y.tab.h 
+	$(CC) -I ${INCLUDE} -c lex.yy.c 
+
+# I just added the following intermediate compilation because of the need to search for an include file
+y.tab.o:y.tab.c y.tab.h
+	$(CC) -I ${INCLUDE} -c y.tab.c
+
+lex.yy.c: nexusLexer.l
+	$(LEX) nexusLexer.l
+
+y.tab.c y.tab.h: nexusParserTrees.y mySmallTreeLib.h
+	$(YACC) -d nexusParserTrees.y
+
+clean:
+	rm -f y.tab.* lex.yy.* *.a *.o
